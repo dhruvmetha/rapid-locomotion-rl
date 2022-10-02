@@ -30,12 +30,12 @@ class HistoryWrapper(gym.Wrapper):
         return {'obs': obs, 'privileged_obs': privileged_obs, 'obs_history': self.obs_history}
 
     def reset_idx(self, env_ids):  # it might be a problem that this isn't getting called!!
-        ret = super().reset_idx(env_ids)
+        ret = self.env.reset_idx(env_ids)
         self.obs_history[env_ids, :] = 0
         return ret
 
     def reset(self):
-        ret = super().reset()
+        ret = self.env.reset()
         privileged_obs = self.env.get_privileged_observations()
         self.obs_history[:, :] = 0
         return {"obs": ret, "privileged_obs": privileged_obs, "obs_history": self.obs_history}

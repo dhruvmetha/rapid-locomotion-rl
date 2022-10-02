@@ -12,8 +12,7 @@ import copy
 from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
 
-from mini_gym import MINI_GYM_ROOT_DIR
-
+from high_level_policy import HLP_ROOT_DIR, USE_LATENT
 
 def class_to_dict(obj) -> dict:
     if not hasattr(obj, "__dict__"):
@@ -35,7 +34,7 @@ def class_to_dict(obj) -> dict:
 
 class DataCaches:
     def __init__(self, curriculum_bins):
-        from mini_gym_learn.ppo.metrics_caches import DistCache, SlotCache
+        from high_level_policy.ppo.metrics_caches import DistCache, SlotCache
 
         self.slot_cache = SlotCache(curriculum_bins)
         self.dist_cache = DistCache()
@@ -47,7 +46,7 @@ caches = DataCaches(1)
 class RunnerArgs(PrefixProto, cli=False):
     # runner
     algorithm_class_name = 'PPO'
-    num_steps_per_env = 24  # per iteration
+    num_steps_per_env = 200  # per iteration
     max_iterations = 1500  # number of policy updates
 
     # logging
@@ -109,10 +108,10 @@ class Runner:
             self.device)
         self.alg.actor_critic.train()
 
-        rewbuffer = deque(maxlen=100)
-        lenbuffer = deque(maxlen=100)
-        rewbuffer_eval = deque(maxlen=100)
-        lenbuffer_eval = deque(maxlen=100)
+        rewbuffer = deque(maxlen=200)
+        lenbuffer = deque(maxlen=200)
+        rewbuffer_eval = deque(maxlen=200)
+        lenbuffer_eval = deque(maxlen=200)
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
@@ -125,16 +124,17 @@ class Runner:
             # Rollout
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
-                    actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],
-                                                 obs_history[:num_train_envs])
+                    actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs])
                     if eval_expert:
                         actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:],
-                                                                         privileged_obs[num_train_envs:])
+                                                                        privileged_obs[num_train_envs:])
                     else:
                         actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:],
-                                                                         obs_history[num_train_envs:])
+                                                                        obs_history[num_train_envs:])
                     ret = self.env.step(torch.cat((actions_train, actions_eval), dim=0))
+
                     obs_dict, rewards, dones, infos = ret
+                    # print(obs)
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
 
@@ -224,66 +224,66 @@ class Runner:
                     logger.torch_save(self.alg.actor_critic.state_dict(), f"checkpoints/ac_weights_{it:06d}.pt")
                     logger.duplicate(f"checkpoints/ac_weights_{it:06d}.pt", f"checkpoints/ac_weights_last.pt")
 
-                    path = f'{MINI_GYM_ROOT_DIR}/tmp/legged_data'
+                    path = f'{HLP_ROOT_DIR}/tmp/legged_data'
 
                     os.makedirs(path, exist_ok=True)
-
-                    adaptation_module_path = f'{path}/adaptation_module_latest.jit'
-                    adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
-                    traced_script_adaptation_module = torch.jit.script(adaptation_module)
-                    traced_script_adaptation_module.save(adaptation_module_path)
 
                     body_path = f'{path}/body_latest.jit'
                     body_model = copy.deepcopy(self.alg.actor_critic.actor_body).to('cpu')
                     traced_script_body_module = torch.jit.script(body_model)
                     traced_script_body_module.save(body_path)
-
-                    logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
                     logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
 
-            self.current_learning_iteration += num_learning_iterations
+                    if USE_LATENT:
+                        adaptation_module_path = f'{path}/adaptation_module_latest.jit'
+                        adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
+                        traced_script_adaptation_module = torch.jit.script(adaptation_module)
+                        traced_script_adaptation_module.save(adaptation_module_path)
+                        logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
+
+            self.current_learning_iteration += num_learning_iterations  
 
         with logger.Sync():
             logger.torch_save(self.alg.actor_critic.state_dict(), f"checkpoints/ac_weights_{it:06d}.pt")
             logger.duplicate(f"checkpoints/ac_weights_{it:06d}.pt", f"checkpoints/ac_weights_last.pt")
 
-            path = f'{MINI_GYM_ROOT_DIR}/tmp/legged_data'
+            path = f'{HLP_ROOT_DIR}/tmp/legged_data'
 
             os.makedirs(path, exist_ok=True)
-
-            adaptation_module_path = f'{path}/adaptation_module_latest.jit'
-            adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
-            traced_script_adaptation_module = torch.jit.script(adaptation_module)
-            traced_script_adaptation_module.save(adaptation_module_path)
 
             body_path = f'{path}/body_latest.jit'
             body_model = copy.deepcopy(self.alg.actor_critic.actor_body).to('cpu')
             traced_script_body_module = torch.jit.script(body_model)
             traced_script_body_module.save(body_path)
-
-            logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
             logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
+
+            if USE_LATENT:
+                adaptation_module_path = f'{path}/adaptation_module_latest.jit'
+                adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
+                traced_script_adaptation_module = torch.jit.script(adaptation_module)
+                traced_script_adaptation_module.save(adaptation_module_path)
+                logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
 
     def log_video(self, it):
         if it - self.last_recording_it >= RunnerArgs.save_video_interval:
-            self.env.start_recording()
-            if self.env.num_eval_envs > 0:
-                self.env.start_recording_eval()
+            self.env.ll_env.start_recording()
+            # if self.env.num_eval_envs > 0:
+            self.env.ll_env.start_recording_eval()
             print("START RECORDING")
             self.last_recording_it = it
 
-        frames = self.env.get_complete_frames()
+        frames = self.env.ll_env.get_complete_frames()
         if len(frames) > 0:
-            self.env.pause_recording()
+            self.env.ll_env.pause_recording()
             print("LOGGING VIDEO")
-            logger.save_video(frames, f"videos/{it:05d}.mp4", fps=1 / self.env.dt)
+            logger.save_video(frames, f"videos/{it:05d}.mp4", fps=1 / self.env.ll_env.dt)
 
-        if self.env.num_eval_envs > 0:
-            frames = self.env.get_complete_frames_eval()
-            if len(frames) > 0:
-                self.env.pause_recording_eval()
-                print("LOGGING EVAL VIDEO")
-                logger.save_video(frames, f"videos/{it:05d}_eval.mp4", fps=1 / self.env.dt)
+        # if self.env.num_eval_envs > 0:
+        frames = self.env.ll_env.get_complete_frames_eval()
+        if len(frames) > 0:
+            self.env.ll_env.pause_recording_eval()
+            print("LOGGING EVAL VIDEO")
+            logger.save_video(frames, f"videos/{it:05d}_eval.mp4", fps=1 / self.env.ll_env.dt)
 
     def get_inference_policy(self, device=None):
         self.alg.actor_critic.eval()

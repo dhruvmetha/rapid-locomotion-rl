@@ -6,6 +6,7 @@ def train_mc(headless=True):
 
     from mini_gym.envs.base.legged_robot_config import Cfg
     from mini_gym.envs.mini_cheetah.mini_cheetah_config import config_mini_cheetah
+    from mini_gym.envs.go1.go1_config import config_go1
     from mini_gym.envs.mini_cheetah.velocity_tracking import VelocityTrackingEasyEnv
 
     from ml_logger import logger
@@ -16,7 +17,8 @@ def train_mc(headless=True):
     from mini_gym_learn.ppo.ppo import PPO_Args
     from mini_gym_learn.ppo import RunnerArgs
 
-    config_mini_cheetah(Cfg)
+    # config_mini_cheetah(Cfg)
+    config_go1(Cfg)
 
     env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
 

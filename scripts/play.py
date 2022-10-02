@@ -7,6 +7,7 @@ import numpy as np
 from mini_gym.envs import *
 from mini_gym.envs.base.legged_robot_config import Cfg
 from mini_gym.envs.mini_cheetah.mini_cheetah_config import config_mini_cheetah
+from mini_gym.envs.go1.go1_config import config_go1
 from mini_gym.envs.mini_cheetah.velocity_tracking import VelocityTrackingEasyEnv
 
 from tqdm import tqdm
@@ -14,8 +15,8 @@ from tqdm import tqdm
 
 def load_env(headless=False):
     # prepare environment
-    config_mini_cheetah(Cfg)
-
+    # config_mini_cheetah(Cfg)
+    config_go1(Cfg)
     from ml_logger import logger
 
     print(logger.glob("*"))
@@ -75,7 +76,7 @@ def load_env(headless=False):
     from mini_gym_learn.ppo.actor_critic import ActorCritic
 
     actor_critic = ActorCritic(
-        num_obs=Cfg.env.num_observations,
+        num_obs=Cfg.env.num_observations, 
         num_privileged_obs=Cfg.env.num_privileged_obs,
         num_obs_history=Cfg.env.num_observations * \
                         Cfg.env.num_observation_history,
@@ -106,14 +107,24 @@ def play_mc(headless=True):
 
     env, policy = load_env(headless=headless)
 
-    num_eval_steps = 250
-    x_vel_cmd, y_vel_cmd, yaw_vel_cmd = 3.0, 0.0, 0.0
+    num_eval_steps = 1000
+    x_vel_cmd, y_vel_cmd, yaw_vel_cmd = 1.0, 0.0, 0.0
 
     measured_x_vels = np.zeros(num_eval_steps)
     target_x_vels = np.ones(num_eval_steps) * x_vel_cmd
     joint_positions = np.zeros((num_eval_steps, 12))
-
+    env.commands[:, 0] = x_vel_cmd
+    env.commands[:, 1] = y_vel_cmd
+    env.commands[:, 2] = yaw_vel_cmd
     obs = env.reset()
+
+    actions = torch.zeros_like(env.actions, device=env.device, dtype=torch.float, requires_grad=False)  
+    with torch.no_grad():
+        for _ in range(20):
+            env.commands[:, 0] = x_vel_cmd
+            env.commands[:, 1] = y_vel_cmd
+            env.commands[:, 2] = yaw_vel_cmd
+            obs, rew, done, info = env.step(actions)
 
     for i in tqdm(range(num_eval_steps)):
         with torch.no_grad():
