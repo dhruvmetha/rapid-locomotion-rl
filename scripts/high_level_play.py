@@ -23,12 +23,12 @@ class reward_scales:
 
     # step rewards
     distance = -0.05
-    time = -0.01
+    time = -0.1
     action_rate = -0.0
     lateral_vel = -0.00
     backward_vel = -0.000
 
-TRAJ_IMAGE_FOLDER = 'traj_images_2'
+TRAJ_IMAGE_FOLDER = 'traj_images_5'
 
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False):
