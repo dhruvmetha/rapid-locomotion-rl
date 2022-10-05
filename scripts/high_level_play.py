@@ -16,28 +16,31 @@ from mini_gym.envs.mini_cheetah.velocity_tracking import VelocityTrackingEasyEnv
 class reward_scales:
 
     # terminal rewards
-    terminal_distance_covered = 0.00
-    terminal_distance_gs = 5.0
+    terminal_distance_covered = -0.0
+    terminal_distance_gs = 2.0
     terminal_ll_reset = -2.0
     terminal_time_out = -1.0
 
     # step rewards
-    distance = -0.1
-    action_rate = -0.01
-    lateral_vel = -0.05
-    backward_vel = -0.005
+    distance = -0.01
+    time = -0.0
+    action_rate = -0.0
+    lateral_vel = -0.00
+    backward_vel = -0.000
+
+TRAJ_IMAGE_FOLDER = 'traj_images_4'
 
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False):
         self.device= 'cuda:0'
-        self.num_obs = 14
+        self.num_obs = 18
         self.num_actions = 3
         self.max_episode_length_s = 10
         self.num_privileged_obs = 18
         self.num_obs_history = 16
 
         self.num_envs = num_envs
-        self.num_train_envs = max(1, int(num_envs * 0.95))
+        self.num_train_envs = max(1, int(num_envs*0.95))
 
         self.ll_env, self.low_level_policy = self._load_env(num_envs, headless)
         self.dt = self.ll_env.dt
@@ -46,6 +49,12 @@ class HighLevelControlWrapper():
         self.ll_obs = self.ll_env.reset()
         self.ll_rew = self.ll_env.rew_buf
 
+
+        self.all_trajectories = []
+        self.success_trajectories = []
+
+        self.traj_id = torch.tensor(np.random.uniform(self.num_train_envs, self.num_envs), device=self.device, dtype=torch.int, requires_grad=False)
+        self.traj_image_id = 0
 
         self.obs_buf = torch.zeros((num_envs, self.num_obs), device=self.device, dtype=torch.float, requires_grad=False)
         self.rew_buf = torch.zeros(num_envs, device=self.device, dtype=torch.float, requires_grad=False)
@@ -65,11 +74,12 @@ class HighLevelControlWrapper():
 
         self.privileged_obs_buf = torch.zeros((num_envs, self.num_privileged_obs), device=self.device, dtype=torch.float, requires_grad=False)
         self.obs_history = torch.zeros(self.num_envs, self.num_obs_history, dtype=torch.float, device=self.device, requires_grad=False)
+        self.trajectory = torch.zeros(self.max_episode_length+1, 2, dtype=torch.float, device=self.device, requires_grad=False)
 
         self.goal_position = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device, requires_grad=False)
-        # self.goal_position = (2.0 * torch.rand((self.num_envs, 2), dtype=torch.float, device=self.device, requires_grad=False)) - 1.0
+        # self.goal_position = (1.5 * torch.rand((self.num_envs, 2), dtype=torch.float, device=self.device, requires_grad=False)) + 0.5
         self.goal_position[:, 0] = 3.0 # (3.0 * torch.rand(self.num_envs)) + 1.0   
-        self.goal_position[:, 1] = 0.0        
+        self.goal_position[:, 1] = 0.0       
         self.extras = {}
 
 
@@ -130,16 +140,19 @@ class HighLevelControlWrapper():
 
     def step(self, actions):
         self.actions = torch.clamp(actions, -2, 2)
-        self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
+        self.actions[:, :] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         with torch.no_grad():
             ll_actions = self.low_level_policy(self.ll_obs)
         self.ll_env.commands[:, :3] = self.actions
         # self.ll_env.commands[:, :3] *= (torch.norm(self.ll_env.commands[:, :3], dim=1) > 0.5).unsqueeze(1)
         self.ll_obs, self.ll_rew, self.ll_dones, self.ll_info = self.ll_env.step(ll_actions)
-        
 
         # compute observations
         self.episode_length_buf += 1
+        # print(self.episode_length_buf[:3])
+        # print(self.max_episode_length, self.ll_env.dt)
+
+
         self.post_physics_step()
         env_ids = self.check_termination() 
         self.compute_reward()
@@ -159,13 +172,18 @@ class HighLevelControlWrapper():
 
     def compute_observations(self):
         self.base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
+        # for i in range(self.num_envs):
+        #     self.trajectory[i, self.episode_length_buf[i]]= self.base_pos[i, :2]
+        # self.all_trajectories.append()
+        self.trajectory[self.episode_length_buf[self.traj_id]-1, :] = self.base_pos[self.traj_id, :2]
+        
+        self.base_quat = self.ll_env.root_states[:, 3:7] - self.ll_env.base_init_state[3:7]
         self.base_lin_vel = self.ll_env.base_lin_vel
         self.base_ang_vel = self.ll_env.base_ang_vel
 
-        self.obs_buf = torch.cat([self.base_pos, self.base_lin_vel, self.base_ang_vel, self.actions, self.goal_position], dim=-1)
+        self.obs_buf = torch.cat([self.base_pos,  self.base_quat, self.base_lin_vel, self.base_ang_vel, self.actions, self.goal_position], dim=-1)
         self.last_pos[:] = self.base_pos[:]
 
-        # print(self.base_pos)
 
     def compute_reward(self):
         self.rew_buf[:] = 0.0
@@ -189,7 +207,15 @@ class HighLevelControlWrapper():
     def check_termination(self):
         # base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
         self.gs_buf = torch.linalg.norm(self.base_pos[:, :2] - self.goal_position, dim=-1) < 0.1
-        self.time_buf = (self.episode_length_buf > self.max_episode_length)
+        gs_env_ids = self.gs_buf.nonzero(as_tuple=False).flatten()
+        if len(gs_env_ids) > 100:
+            print("---------------------------------------------------------------")
+            print(self.goal_position[gs_env_ids[0]], self.base_pos[gs_env_ids[0], :2], torch.linalg.norm(self.base_pos[gs_env_ids[0], :2] - self.goal_position[gs_env_ids[0], :2], dim=-1), self.episode_length_buf[gs_env_ids[0]], len(gs_env_ids), self.actions[gs_env_ids[0]])
+            print("---------------------------------------------------------------")
+
+
+        # print(self.base_pos[0, :2], torch.linalg.norm(self.base_pos[0, :2] - self.goal_position[0, :2], dim=-1), self.episode_length_buf[0], self.actions[0])
+        self.time_buf = (self.episode_length_buf >= self.max_episode_length)
 
         self.reset_buf |= self.ll_dones
         self.reset_buf |= self.gs_buf
@@ -218,14 +244,43 @@ class HighLevelControlWrapper():
                 self.extras["eval/episode"]['rew_' + key] = torch.mean(self.episode_sums[key][eval_env_ids])
                 self.episode_sums[key][eval_env_ids] = 0
 
+        if self.traj_id in eval_env_ids:
+            # print(self.traj_id)
+            self.all_trajectories.append(self.trajectory[:self.episode_length_buf[self.traj_id]-1].clone().cpu().numpy())
+            print('ADDED trajectory', len(self.all_trajectories))
+            
+            if len(self.all_trajectories) == 6:
+                from matplotlib import pyplot as plt
+                fig = plt.figure(figsize=(8, 8))
+                ax = fig.gca()
+                ax.set_xlim(0.0, 6.0)
+                ax.set_ylim(-3.0, 3.0)
+                print('plotting now')
+                for traj in self.all_trajectories[1:]:
+                    ax.plot(traj[:, 0], traj[:, 1])
+                    circle = plt.Circle(self.goal_position[self.traj_id].clone().cpu(), 0.1, color='blue')
+                    ax.add_patch(circle)
+                ax.scatter(self.goal_position[self.traj_id, 0].clone().cpu(), self.goal_position[self.traj_id, 1].clone().cpu())
+                plt.savefig(f'{TRAJ_IMAGE_FOLDER}/traj_{self.traj_image_id}.png')
+                self.traj_image_id += 1
+                self.traj_id = torch.tensor(np.random.uniform(self.num_train_envs, self.num_envs), device=self.device, dtype=torch.int, requires_grad=False)
+                self.all_trajectories = []
+        
+                
+            # print(self.episode_length_buf[env_ids])
+            # self.traj_id = torch.tensor(np.random.uniform(0, self.num_train_envs), device=self.device, dtype=torch.int, requires_grad=False)
+            self.trajectory[:] = 0.
+
         self.ll_env.reset_idx(env_ids)
         self.rew_buf[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
+        self.last_actions[env_ids] = 0.
 
         self.lateral_vel[env_ids] = 0.
         self.backward_vel[env_ids] = 0.
         self.dist_travelled[env_ids] = 0. 
         self.last_pos[env_ids] = self.ll_env.root_states[env_ids, :3] - self.ll_env.env_origins[env_ids, :3] - self.ll_env.base_init_state[:3]
+
 
         self.compute_observations()
         self.reset_buf[env_ids] = False
@@ -336,8 +391,11 @@ class HighLevelControlWrapper():
     def get_observations(self):
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }
     
+    def _reward_time(self):
+        return self.episode_length_buf
+
     def _reward_distance(self):
-        return torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1)
+        return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1)))
 
     def _reward_lateral_vel(self):
         return torch.square(self.lateral_vel)
@@ -371,8 +429,8 @@ if __name__ == '__main__':
     from high_level_policy import HLP_ROOT_DIR
     from high_level_policy.ppo import Runner
 
-    num_envs = 1024
-    env = HighLevelControlWrapper(num_envs=num_envs)
+    num_envs = 2048
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=False)
 
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'rapid-locomotion/%Y-%m-%d/{stem}/%H%M%S.%f'),
@@ -387,10 +445,13 @@ if __name__ == '__main__':
                   glob: "videos/*.mp4"
                 """, filename=".charts.yml", dedent=True)
     
-    
+    import os
+    if not os.path.exists(TRAJ_IMAGE_FOLDER):
+        os.makedirs(TRAJ_IMAGE_FOLDER)
+                
     gpu_id = 0
     runner = Runner(env, device=f"cuda:{gpu_id}")
-    runner.learn(num_learning_iterations=1000, eval_freq=200, eval_expert=True)
+    runner.learn(num_learning_iterations=2000, eval_freq=200, eval_expert=True)
 
 
     

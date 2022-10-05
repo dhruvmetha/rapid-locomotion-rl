@@ -46,12 +46,12 @@ caches = DataCaches(1)
 class RunnerArgs(PrefixProto, cli=False):
     # runner
     algorithm_class_name = 'PPO'
-    num_steps_per_env = 200  # per iteration
+    num_steps_per_env = 100  # per iteration
     max_iterations = 1500  # number of policy updates
 
     # logging
     save_interval = 400  # check for potential saves every this many iterations
-    save_video_interval = 100
+    save_video_interval = 60
     log_freq = 10
 
     # load and resume
@@ -108,10 +108,10 @@ class Runner:
             self.device)
         self.alg.actor_critic.train()
 
-        rewbuffer = deque(maxlen=200)
-        lenbuffer = deque(maxlen=200)
-        rewbuffer_eval = deque(maxlen=200)
-        lenbuffer_eval = deque(maxlen=200)
+        rewbuffer = deque(maxlen=60)
+        lenbuffer = deque(maxlen=60)
+        rewbuffer_eval = deque(maxlen=60)
+        lenbuffer_eval = deque(maxlen=60)
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 

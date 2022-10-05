@@ -52,6 +52,7 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
+*.png
 
 # VS Code
 .vscode
@@ -67,3 +68,4 @@ docker/rsc
 *.swp
 *.jit
 tmp
+traj_images*

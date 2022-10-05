@@ -1,6 +1,7 @@
 # License: see [LICENSE, LICENSES/legged_gym/LICENSE]
 
 import os
+from random import random, shuffle
 from re import T
 from typing import Dict
 
@@ -40,6 +41,7 @@ class LeggedRobot(BaseTask):
         self.debug_viz = False
         self.init_done = False
         self.initial_dynamics_dict = initial_dynamics_dict
+        self.random_init_states = True
         if eval_cfg is not None: self._parse_cfg(eval_cfg)
         self._parse_cfg(self.cfg)
 
@@ -731,6 +733,48 @@ class LeggedRobot(BaseTask):
             self.root_states[go1_ids_int32, 1] += cfg.terrain.y_init_offset
         else:
             self.all_root_states[go1_ids_int32] = self.base_init_state
+            # print('hereeeeee', go1_ids_int32, self.all_root_states[go1_ids_int32])
+            if self.random_init_states:
+                shuffled_ids = go1_ids_int32[go1_ids_int32.clone().float().multinomial(len(go1_ids_int32)).long()]
+                # print(shuffled_ids)
+                
+                self.all_root_states[shuffled_ids, 1] = 4. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False)
+
+                # print('y change', self.all_root_states[shuffled_ids])
+
+
+                if len(shuffled_ids) > 1:
+                    margin = len(shuffled_ids)//3
+                    self.all_root_states[shuffled_ids[:margin], 0] = 1. * torch.rand(len(shuffled_ids[:margin]), dtype=torch.float, device=self.device, requires_grad=False) + 1.5
+                    self.all_root_states[shuffled_ids[margin:(2*margin)], 0] = 1. * torch.rand(len(shuffled_ids[margin:(2*margin)]), dtype=torch.float, device=self.device, requires_grad=False) + 3.5
+
+                    self.all_root_states[shuffled_ids[(2*margin):], 0] = 1. * torch.rand(len(shuffled_ids[(2*margin):]), dtype=torch.float, device=self.device, requires_grad=False) + 2.5
+
+                    more_margin = margin//2
+
+                    self.all_root_states[shuffled_ids[(2*margin):(2*margin)+more_margin], 1] = 1. * torch.rand(len(shuffled_ids[(2*margin):(2*margin)+more_margin]), dtype=torch.float, device=self.device, requires_grad=False) - 1.5
+
+                    self.all_root_states[shuffled_ids[(2*margin)+more_margin:], 1] = 1. * torch.rand(len(shuffled_ids[(2*margin)+more_margin:]), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
+                    
+                else:
+                    if np.random.uniform(0, 1) > 0.5:
+                        if np.random.uniform(0, 1) > 0.5:
+                            self.all_root_states[shuffled_ids, 0] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 1.5
+                        else:
+                            self.all_root_states[shuffled_ids, 0] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 3.5
+                        # print('just x change', self.all_root_states[shuffled_ids])
+                    else:
+                        self.all_root_states[shuffled_ids, 0] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 2.5
+                        if np.random.uniform(0, 1) > 0.5:
+                            self.all_root_states[shuffled_ids, 1] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) - 1.5
+                        else:
+                            self.all_root_states[shuffled_ids, 1] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
+                    
+                    # print(self.base_init_state, self.all_root_states[shuffled_ids])
+
+
+            
+            # print(self.all_root_states[go1_ids_int32, :3])
             self.all_root_states[go1_ids_int32, :3] += self.env_origins[env_ids]
         # base velocities
         # self.all_root_states[go1_ids_int32, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6),
