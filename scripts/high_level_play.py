@@ -22,8 +22,8 @@ class reward_scales:
     terminal_time_out = -1.0
 
     # step rewards
-    distance = -0.01
-    time = -0.0
+    distance = -0.05
+    time = -0.01
     action_rate = -0.0
     lateral_vel = -0.00
     backward_vel = -0.000
@@ -140,7 +140,9 @@ class HighLevelControlWrapper():
 
     def step(self, actions):
         self.actions = torch.clamp(actions, -2, 2)
-        self.actions[:, :] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
+        # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
+        # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
+        # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         with torch.no_grad():
             ll_actions = self.low_level_policy(self.ll_obs)
         self.ll_env.commands[:, :3] = self.actions
