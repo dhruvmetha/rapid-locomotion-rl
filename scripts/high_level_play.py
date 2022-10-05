@@ -17,8 +17,8 @@ class reward_scales:
 
     # terminal rewards
     terminal_distance_covered = -0.0
-    terminal_distance_gs = 2.0
-    terminal_ll_reset = -2.0
+    terminal_distance_gs = 5.0
+    terminal_ll_reset = -10.0
     terminal_time_out = -1.0
 
     # step rewards
@@ -28,7 +28,7 @@ class reward_scales:
     lateral_vel = -0.00
     backward_vel = -0.000
 
-TRAJ_IMAGE_FOLDER = 'traj_images_4'
+TRAJ_IMAGE_FOLDER = 'traj_images_2'
 
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False):
@@ -262,6 +262,7 @@ class HighLevelControlWrapper():
                     ax.add_patch(circle)
                 ax.scatter(self.goal_position[self.traj_id, 0].clone().cpu(), self.goal_position[self.traj_id, 1].clone().cpu())
                 plt.savefig(f'{TRAJ_IMAGE_FOLDER}/traj_{self.traj_image_id}.png')
+                plt.close()
                 self.traj_image_id += 1
                 self.traj_id = torch.tensor(np.random.uniform(self.num_train_envs, self.num_envs), device=self.device, dtype=torch.int, requires_grad=False)
                 self.all_trajectories = []
@@ -392,7 +393,7 @@ class HighLevelControlWrapper():
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }
     
     def _reward_time(self):
-        return self.episode_length_buf
+        return self.episode_length_buf/self.max_episode_length
 
     def _reward_distance(self):
         return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1)))
@@ -451,7 +452,7 @@ if __name__ == '__main__':
                 
     gpu_id = 0
     runner = Runner(env, device=f"cuda:{gpu_id}")
-    runner.learn(num_learning_iterations=2000, eval_freq=200, eval_expert=True)
+    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=True)
 
 
     

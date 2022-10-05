@@ -720,6 +720,8 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): Environemnt ids
         """
+        if len(env_ids) == 0:
+            return
         go1_ids_int32 = torch.tensor([self.gym.find_actor_index(self.envs[i.item()], 'go1', gymapi.DOMAIN_SIM) for i in env_ids], dtype=torch.long, device=self.device)
 
         # base position
@@ -733,12 +735,15 @@ class LeggedRobot(BaseTask):
             self.root_states[go1_ids_int32, 1] += cfg.terrain.y_init_offset
         else:
             self.all_root_states[go1_ids_int32] = self.base_init_state
-            # print('hereeeeee', go1_ids_int32, self.all_root_states[go1_ids_int32])
+            # print('hereeeeee', go1_ids_int32)
             if self.random_init_states:
-                shuffled_ids = go1_ids_int32[go1_ids_int32.clone().float().multinomial(len(go1_ids_int32)).long()]
+                try:
+                    shuffled_ids = go1_ids_int32[go1_ids_int32.clone().float().multinomial(len(go1_ids_int32)).long()]
+                except:
+                    shuffled_ids = go1_ids_int32
                 # print(shuffled_ids)
                 
-                self.all_root_states[shuffled_ids, 1] = 4. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False)
+                self.all_root_states[shuffled_ids, 1] = 4. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) - 2.0
 
                 # print('y change', self.all_root_states[shuffled_ids])
 
