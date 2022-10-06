@@ -28,7 +28,7 @@ class reward_scales:
     lateral_vel = -0.05
     backward_vel = -0.005
 
-TRAJ_IMAGE_FOLDER = 'traj_images_all_4steps'
+TRAJ_IMAGE_FOLDER = 'traj_images_all_4steps_1'
 
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False):

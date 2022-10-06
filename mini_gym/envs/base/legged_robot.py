@@ -743,37 +743,37 @@ class LeggedRobot(BaseTask):
                     shuffled_ids = go1_ids_int32
                 # print(shuffled_ids)
                 
-                self.all_root_states[shuffled_ids, 1] = 4. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) - 2.0
+                self.all_root_states[shuffled_ids, 1] = 6. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) - 3.0
 
                 # print('y change', self.all_root_states[shuffled_ids])
 
 
                 if len(shuffled_ids) > 1:
                     margin = len(shuffled_ids)//3
-                    self.all_root_states[shuffled_ids[:margin], 0] = 1. * torch.rand(len(shuffled_ids[:margin]), dtype=torch.float, device=self.device, requires_grad=False) + 1.5
-                    self.all_root_states[shuffled_ids[margin:(2*margin)], 0] = 1. * torch.rand(len(shuffled_ids[margin:(2*margin)]), dtype=torch.float, device=self.device, requires_grad=False) + 3.5
+                    self.all_root_states[shuffled_ids[:margin], 0] = 2. * torch.rand(len(shuffled_ids[:margin]), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
+                    self.all_root_states[shuffled_ids[margin:(2*margin)], 0] = 2. * torch.rand(len(shuffled_ids[margin:(2*margin)]), dtype=torch.float, device=self.device, requires_grad=False) + 3.5
 
                     self.all_root_states[shuffled_ids[(2*margin):], 0] = 1. * torch.rand(len(shuffled_ids[(2*margin):]), dtype=torch.float, device=self.device, requires_grad=False) + 2.5
 
                     more_margin = margin//2
 
-                    self.all_root_states[shuffled_ids[(2*margin):(2*margin)+more_margin], 1] = 1. * torch.rand(len(shuffled_ids[(2*margin):(2*margin)+more_margin]), dtype=torch.float, device=self.device, requires_grad=False) - 1.5
+                    self.all_root_states[shuffled_ids[(2*margin):(2*margin)+more_margin], 1] = 2. * torch.rand(len(shuffled_ids[(2*margin):(2*margin)+more_margin]), dtype=torch.float, device=self.device, requires_grad=False) - 2.5
 
-                    self.all_root_states[shuffled_ids[(2*margin)+more_margin:], 1] = 1. * torch.rand(len(shuffled_ids[(2*margin)+more_margin:]), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
+                    self.all_root_states[shuffled_ids[(2*margin)+more_margin:], 1] = 2. * torch.rand(len(shuffled_ids[(2*margin)+more_margin:]), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
                     
                 else:
                     if np.random.uniform(0, 1) > 0.5:
                         if np.random.uniform(0, 1) > 0.5:
-                            self.all_root_states[shuffled_ids, 0] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 1.5
+                            self.all_root_states[shuffled_ids, 0] = 2. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
                         else:
-                            self.all_root_states[shuffled_ids, 0] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 3.5
+                            self.all_root_states[shuffled_ids, 0] = 2. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 3.5
                         # print('just x change', self.all_root_states[shuffled_ids])
                     else:
                         self.all_root_states[shuffled_ids, 0] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 2.5
                         if np.random.uniform(0, 1) > 0.5:
-                            self.all_root_states[shuffled_ids, 1] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) - 1.5
+                            self.all_root_states[shuffled_ids, 1] = 2. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) - 2.5
                         else:
-                            self.all_root_states[shuffled_ids, 1] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
+                            self.all_root_states[shuffled_ids, 1] = 2. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + 0.5
                     
                     # print(self.base_init_state, self.all_root_states[shuffled_ids])
 
