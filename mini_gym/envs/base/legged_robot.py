@@ -780,6 +780,7 @@ class LeggedRobot(BaseTask):
 
             
             # print(self.all_root_states[go1_ids_int32, :3])
+            self.go1_init_states[env_ids, :2] = self.all_root_states[go1_ids_int32, :2]
             self.all_root_states[go1_ids_int32, :3] += self.env_origins[env_ids]
         # base velocities
         # self.all_root_states[go1_ids_int32, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6),
@@ -998,6 +999,7 @@ class LeggedRobot(BaseTask):
         # create some wrapper tensors for different slices
         self.all_root_states = gymtorch.wrap_tensor(self.actor_root_state_ptr)
         self.root_states = self.all_root_states[self.go1_indices]
+        self.go1_init_states = torch.zeros_like(self.root_states[:, :2])
         
         self.all_dof_state = gymtorch.wrap_tensor(self.dof_state_tensor_ptr)
         self.dof_state = self.all_dof_state[self.go1_dof_indices]

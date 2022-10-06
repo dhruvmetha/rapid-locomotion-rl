@@ -16,19 +16,19 @@ from mini_gym.envs.mini_cheetah.velocity_tracking import VelocityTrackingEasyEnv
 class reward_scales:
 
     # terminal rewards
-    terminal_distance_covered = -0.0
+    terminal_distance_covered = -0.01
     terminal_distance_gs = 5.0
     terminal_ll_reset = -10.0
     terminal_time_out = -1.0
 
     # step rewards
     distance = -0.05
-    time = -0.1
+    time = -0.1 # -0.1
     action_rate = -0.0
     lateral_vel = -0.00
     backward_vel = -0.000
 
-TRAJ_IMAGE_FOLDER = 'traj_images_5'
+TRAJ_IMAGE_FOLDER = 'traj_images_7'
 
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False):
@@ -139,7 +139,7 @@ class HighLevelControlWrapper():
         self.episode_sums_eval["total"] = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
 
     def step(self, actions):
-        self.actions = torch.clamp(actions, -2, 2)
+        self.actions = torch.clamp(actions, -1.2, 1.2)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
@@ -168,7 +168,7 @@ class HighLevelControlWrapper():
         self.lateral_vel[:] = 0.
         self.backward_vel[:] = 0.
         self.base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
-        self.dist_travelled[:] += torch.abs(torch.linalg.norm(self.base_pos - self.last_pos, dim=-1))
+        self.dist_travelled[:] += torch.abs(torch.linalg.norm(self.base_pos[:, :2] - self.last_pos[:, :2], dim=-1))
         self.lateral_vel[:] = self.ll_env.base_lin_vel[:, 1]
         self.backward_vel[:] = torch.clamp_max(self.ll_env.base_lin_vel[:, 0], 0)
 
@@ -179,7 +179,7 @@ class HighLevelControlWrapper():
         # self.all_trajectories.append()
         self.trajectory[self.episode_length_buf[self.traj_id]-1, :] = self.base_pos[self.traj_id, :2]
         
-        self.base_quat = self.ll_env.root_states[:, 3:7] - self.ll_env.base_init_state[3:7]
+        self.base_quat = self.ll_env.root_states[:, 3:7]
         self.base_lin_vel = self.ll_env.base_lin_vel
         self.base_ang_vel = self.ll_env.base_ang_vel
 
@@ -259,9 +259,11 @@ class HighLevelControlWrapper():
                 ax.set_ylim(-3.0, 3.0)
                 print('plotting now')
                 for traj in self.all_trajectories[1:]:
+                    ax.scatter(traj[0, 0], traj[0, 1], color='red')
                     ax.plot(traj[:, 0], traj[:, 1])
                     circle = plt.Circle(self.goal_position[self.traj_id].clone().cpu(), 0.1, color='blue')
                     ax.add_patch(circle)
+                    ax.scatter(traj[-1, 0], traj[-1, 1], color='green')
                 ax.scatter(self.goal_position[self.traj_id, 0].clone().cpu(), self.goal_position[self.traj_id, 1].clone().cpu())
                 plt.savefig(f'{TRAJ_IMAGE_FOLDER}/traj_{self.traj_image_id}.png')
                 plt.close()
@@ -418,7 +420,7 @@ class HighLevelControlWrapper():
     
     def _reward_terminal_distance_covered(self):
         # print(self.dist_travelled * 1.0)
-        return self.dist_travelled
+        return self.gs_buf.int() * (self.dist_travelled/torch.norm(self.ll_env.go1_init_states - self.goal_position, dim=-1))
 
     def _reward_terminal_time_out(self):
         return self.time_buf * 1.0
