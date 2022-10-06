@@ -46,7 +46,7 @@ caches = DataCaches(1)
 class RunnerArgs(PrefixProto, cli=False):
     # runner
     algorithm_class_name = 'PPO'
-    num_steps_per_env = 100  # per iteration
+    num_steps_per_env = 25  # per iteration
     max_iterations = 1500  # number of policy updates
 
     # logging
