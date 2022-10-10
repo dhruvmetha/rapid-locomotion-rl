@@ -161,9 +161,10 @@ class ActorCritic(nn.Module):
         return self.act_teacher(ob["obs"], ob["privileged_obs"])
 
     def act_inference(self, ob, policy_info={}):
-        if ob["privileged_obs"] is not None:
-            gt_latent = self.env_factor_encoder(ob["privileged_obs"])
-            policy_info["gt_latents"] = gt_latent.detach().cpu().numpy()
+        if USE_LATENT:
+            if ob["privileged_obs"] is not None:
+                gt_latent = self.env_factor_encoder(ob["privileged_obs"])
+                policy_info["gt_latents"] = gt_latent.detach().cpu().numpy()
         return self.act_student(ob["obs"], ob["obs_history"])
 
     def act_student(self, observations, observation_history, policy_info={}):

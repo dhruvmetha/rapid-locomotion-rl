@@ -108,10 +108,10 @@ class Runner:
             self.device)
         self.alg.actor_critic.train()
 
-        rewbuffer = deque(maxlen=60)
-        lenbuffer = deque(maxlen=60)
-        rewbuffer_eval = deque(maxlen=60)
-        lenbuffer_eval = deque(maxlen=60)
+        rewbuffer = deque(maxlen=100)
+        lenbuffer = deque(maxlen=100)
+        rewbuffer_eval = deque(maxlen=100)
+        lenbuffer_eval = deque(maxlen=100)
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
