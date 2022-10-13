@@ -3,30 +3,36 @@ assert isaacgym
 import torch
 import numpy as np
 import os
+import wandb
 
 from mini_gym.envs import *
 from mini_gym.envs.base.legged_robot_config import Cfg
 from mini_gym.envs.go1.go1_config import config_go1
 from mini_gym.envs.mini_cheetah.velocity_tracking import VelocityTrackingEasyEnv
+from matplotlib import pyplot as plt
+from matplotlib.patches import Rectangle
 
 class reward_scales:
 
     # terminal rewards
     terminal_distance_covered = -0.05
     terminal_distance_gs = 5.0
-    terminal_ll_reset = -10.0
-    terminal_time_out = -1.0
+    terminal_ll_reset = -1.0
+    terminal_time_out = -2.0
 
     # step rewards
-    distance = -0.1 # 1 - 1/(exp(distance to goal))
+    distance = -0.05 # 1 - 1/exp(distance to goal)
     time = -0.1 # -0.1
-    action_rate = -0.0
+    action_rate = -0.01
+    # ll_reset = -1.0
     lateral_vel = -0.05
+    angular_vel = -0.00
     backward_vel = -0.005
     
 STEP_SIZE = 2
-GOAL_THRESHOLD = 0.25
-TRAJ_IMAGE_FOLDER = f'traj_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
+GOAL_THRESHOLD = 0.1
+GOAL_POSITION = [2, 0]
+TRAJ_IMAGE_FOLDER = f'traj_obs_touchreset_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
 
 if not os.path.exists(TRAJ_IMAGE_FOLDER):
     os.makedirs(TRAJ_IMAGE_FOLDER)
@@ -34,7 +40,7 @@ if not os.path.exists(TRAJ_IMAGE_FOLDER):
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False):
         self.device= 'cuda:0'
-        self.num_obs = 18
+        self.num_obs = 20
         self.num_actions = 3
         self.max_episode_length_s = 10
         self.num_privileged_obs = 18
@@ -52,6 +58,7 @@ class HighLevelControlWrapper():
 
 
         self.all_trajectories = []
+        self.all_rects = []
         self.success_trajectories = []
 
         self.traj_id = torch.tensor(np.random.uniform(self.num_train_envs, self.num_envs), device=self.device, dtype=torch.int, requires_grad=False)
@@ -72,6 +79,7 @@ class HighLevelControlWrapper():
         self.dist_travelled = torch.zeros(num_envs, device=self.device, dtype=torch.float, requires_grad=False)
         self.lateral_vel = torch.zeros(num_envs, device=self.device, dtype=torch.float, requires_grad=False)
         self.backward_vel = torch.zeros(num_envs, device=self.device, dtype=torch.float, requires_grad=False)
+        self.angular_vel = torch.zeros(num_envs, device=self.device, dtype=torch.float, requires_grad=False)
 
         self.privileged_obs_buf = torch.zeros((num_envs, self.num_privileged_obs), device=self.device, dtype=torch.float, requires_grad=False)
         self.obs_history = torch.zeros(self.num_envs, self.num_obs_history, dtype=torch.float, device=self.device, requires_grad=False)
@@ -79,8 +87,8 @@ class HighLevelControlWrapper():
 
         self.goal_position = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device, requires_grad=False)
         # self.goal_position = (1.5 * torch.rand((self.num_envs, 2), dtype=torch.float, device=self.device, requires_grad=False)) + 0.5
-        self.goal_position[:, 0] = 3.0 # (3.0 * torch.rand(self.num_envs)) + 1.0   
-        self.goal_position[:, 1] = 0.0       
+        self.goal_position[:, 0] = GOAL_POSITION[0] # (3.0 * torch.rand(self.num_envs)) + 1.0   
+        self.goal_position[:, 1] = GOAL_POSITION[1]     
         self.extras = {}
 
 
@@ -139,6 +147,9 @@ class HighLevelControlWrapper():
         
         self.episode_sums_eval["total"] = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
 
+    def distance_control(self):
+        return (self.goal_position - self.base_pos)
+
     def step(self, actions):
         self.actions = torch.clamp(actions, -1., 1.)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
@@ -176,6 +187,7 @@ class HighLevelControlWrapper():
         self.dist_travelled[:] += torch.abs(torch.linalg.norm(self.base_pos[:, :2] - self.last_pos[:, :2], dim=-1))
         self.lateral_vel[:] = self.ll_env.base_lin_vel[:, 1]
         self.backward_vel[:] = torch.clamp_max(self.ll_env.base_lin_vel[:, 0], 0)
+        self.angular_vel[:] = self.ll_env.base_ang_vel[:, 2]
 
     def compute_observations(self):
         self.base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
@@ -185,9 +197,10 @@ class HighLevelControlWrapper():
         self.base_lin_vel = self.ll_env.base_lin_vel.clone()
         self.base_ang_vel = self.ll_env.base_ang_vel.clone()
 
+        self.world_obs = self.ll_env.world_obs
         
 
-        self.obs_buf = torch.cat([self.base_pos,  self.base_quat, self.base_lin_vel, self.base_ang_vel, self.actions, self.goal_position], dim=-1)
+        self.obs_buf = torch.cat([self.base_pos,  self.base_quat, self.base_lin_vel, self.base_ang_vel, self.actions, self.world_obs], dim=-1)
         self.last_pos[:] = self.base_pos[:]
 
 
@@ -212,7 +225,8 @@ class HighLevelControlWrapper():
     
     def check_termination(self):
         # base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
-        self.gs_buf = torch.linalg.norm(self.base_pos[:, :2] - self.goal_position, dim=-1) < GOAL_THRESHOLD
+        # self.gs_buf = torch.linalg.norm(self.base_pos[:, :2] - self.goal_position, dim=-1) < GOAL_THRESHOLD # reach a point goal
+        self.gs_buf = (self.base_pos[:, 0] - self.goal_position[:, 0]) > GOAL_THRESHOLD # break out of region goal
         gs_env_ids = self.gs_buf.nonzero(as_tuple=False).flatten()
         if len(gs_env_ids) > 100:
             print("---------------------------------------------------------------")
@@ -255,26 +269,34 @@ class HighLevelControlWrapper():
             if (self.episode_length_buf[self.traj_id]-1) >= 2:
                 self.all_trajectories.append(self.trajectory[:self.episode_length_buf[self.traj_id]-1].clone().cpu().numpy())
                 print('ADDED trajectory', len(self.all_trajectories))
+                block = self.world_obs[self.traj_id]
+                print(self.traj_id, block)
+                block_pos, block_size = block[:2], block[2:]
+                block_xy = block[:2] - block[2:]/2
+                print(block_xy, block_pos) 
+                # circle = plt.Circle(self.goal_position[self.traj_id].clone().cpu(), GOAL_THRESHOLD, color='blue')
+                self.all_rects.append(Rectangle(block_xy.cpu(), *block_size.cpu(), color='blue'))
+                
             
-            if len(self.all_trajectories) == 6:
-                from matplotlib import pyplot as plt
-                fig = plt.figure(figsize=(8, 8))
-                ax = fig.gca()
-                ax.set_xlim(0.0, 8.0)
-                ax.set_ylim(-5.0, 5.0)
-                print('plotting now')
-                for traj in self.all_trajectories[1:]:
+            if len(self.all_trajectories) == 7:
+                
+                fig, axes = plt.subplots(3, 2, figsize=(8, 8))
+                axes = axes.flatten()
+                for traj, rect, ax in zip(self.all_trajectories[1:], self.all_rects[1:], axes):
+                    ax.set_xlim(-1.0, 3.0)
+                    ax.set_ylim(-1.5, 1.5)
                     ax.scatter(traj[0, 0], traj[0, 1], color='red')
                     ax.plot(traj[:, 0], traj[:, 1])
-                    circle = plt.Circle(self.goal_position[self.traj_id].clone().cpu(), GOAL_THRESHOLD, color='blue')
-                    ax.add_patch(circle)
+                    ax.add_patch(rect)
                     ax.scatter(traj[-1, 0], traj[-1, 1], color='green')
-                ax.scatter(self.goal_position[self.traj_id, 0].clone().cpu(), self.goal_position[self.traj_id, 1].clone().cpu())
+                    ax.scatter(self.goal_position[self.traj_id, 0].clone().cpu(), self.goal_position[self.traj_id, 1].clone().cpu())
                 plt.savefig(f'{TRAJ_IMAGE_FOLDER}/traj_{self.traj_image_id}.png')
+                print(f'plotting now traj_{self.traj_image_id}.png')
                 plt.close()
                 self.traj_image_id += 1
                 self.traj_id = torch.tensor(np.random.uniform(self.num_train_envs, self.num_envs), device=self.device, dtype=torch.int, requires_grad=False)
                 self.all_trajectories = []
+                self.all_rects = []
         
                 
             # print(self.episode_length_buf[env_ids])
@@ -308,6 +330,8 @@ class HighLevelControlWrapper():
             self.episode_sums_eval[key][unset_eval_envs] = self.episode_sums[key][unset_eval_envs]
             ep_sums_key = self.episode_sums_eval[key]
             self.extras["eval/episode"]['rew_' + key] = torch.mean(ep_sums_key[ep_sums_key != -1])
+        # for k, v in self.extras['eval/episode'].items():
+        #     wandb.log({f'eval/{k}': v})
         self.reset_idx(env_ids_eval)
         for key in self.episode_sums_eval.keys():
             self.episode_sums_eval[key] = -1 * torch.ones(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
@@ -377,7 +401,7 @@ class HighLevelControlWrapper():
 
         from mini_gym.envs.wrappers.history_wrapper import HistoryWrapper
 
-        env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
+        env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=headless, cfg=Cfg)
         env = HistoryWrapper(env)
 
         # load policy
@@ -405,7 +429,12 @@ class HighLevelControlWrapper():
         return self.episode_length_buf/self.max_episode_length
 
     def _reward_distance(self):
-        return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1)))
+        # return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1))) # reach a point goal
+        return 1.0 - (1/torch.exp(torch.abs(self.last_pos[:, 0] - self.goal_position[:, 0]))) # break out of region goal
+        # return torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1)
+
+    def _reward_angular_vel(self):
+        return torch.abs(self.angular_vel)
 
     def _reward_lateral_vel(self):
         return torch.square(self.lateral_vel)
@@ -416,6 +445,9 @@ class HighLevelControlWrapper():
     def _reward_action_rate(self):
         return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
     
+    def _reward_ll_reset(self):
+        return self.ll_dones * 1.0
+
     def _reward_terminal_ll_reset(self):
         return self.ll_dones * 1.0
 
@@ -425,7 +457,7 @@ class HighLevelControlWrapper():
     
     def _reward_terminal_distance_covered(self):
         # print(self.dist_travelled * 1.0)
-        # return self.gs_buf.int() * (self.dist_travelled/torch.norm(self.ll_env.go1_init_states - self.goal_position, dim=-1))
+        # return self.gs_buf * (self.dist_travelled/torch.norm(self.ll_env.go1_init_states - self.goal_position, dim=-1))
         return self.gs_buf * self.dist_travelled
 
     def _reward_terminal_time_out(self):

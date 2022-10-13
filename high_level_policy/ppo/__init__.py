@@ -8,6 +8,7 @@ from ml_logger import logger
 from params_proto.neo_proto import PrefixProto
 import os
 import copy
+import wandb
 
 from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
@@ -51,7 +52,7 @@ class RunnerArgs(PrefixProto, cli=False):
 
     # logging
     save_interval = 400  # check for potential saves every this many iterations
-    save_video_interval = 200
+    save_video_interval = 100
     log_freq = 10
 
     # load and resume
@@ -108,10 +109,10 @@ class Runner:
             self.device)
         self.alg.actor_critic.train()
 
-        rewbuffer = deque(maxlen=100)
-        lenbuffer = deque(maxlen=100)
-        rewbuffer_eval = deque(maxlen=100)
-        lenbuffer_eval = deque(maxlen=100)
+        rewbuffer = deque(maxlen=200)
+        lenbuffer = deque(maxlen=200)
+        rewbuffer_eval = deque(maxlen=200)
+        lenbuffer_eval = deque(maxlen=200)
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
@@ -143,10 +144,14 @@ class Runner:
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
 
                     if 'train/episode' in infos:
+                        # for k, v in infos['train/episode'].items():
+                        #     wandb.log({f'train/{k}': v})
                         with logger.Prefix(metrics="train/episode"):
                             logger.store_metrics(**infos['train/episode'])
+                        
 
                     if 'eval/episode' in infos:
+                        
                         with logger.Prefix(metrics="eval/episode"):
                             logger.store_metrics(**infos['eval/episode'])
 
@@ -216,7 +221,10 @@ class Runner:
             self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
             if logger.every(RunnerArgs.log_freq, "iteration", start_on=1):
                 # if it % Config.log_freq == 0:
+                # for k, v in self.extras['eval/episode'].items():
+                #     wandb.log({f'eval/{k}': v})
                 logger.log_metrics_summary(key_values={"timesteps": self.tot_timesteps, "iterations": it})
+                print(logger.summary_caches[None])
                 logger.job_running()
 
             if it % RunnerArgs.save_interval == 0:

@@ -41,7 +41,7 @@ class LeggedRobot(BaseTask):
         self.debug_viz = False
         self.init_done = False
         self.initial_dynamics_dict = initial_dynamics_dict
-        self.random_init_states = True
+        self.random_init_states = False
         if eval_cfg is not None: self._parse_cfg(eval_cfg)
         self._parse_cfg(self.cfg)
 
@@ -251,7 +251,7 @@ class LeggedRobot(BaseTask):
 
         self._call_train_eval(self._reset_dofs, env_ids)
         self._call_train_eval(self._reset_root_states, env_ids)
-        # self._call_train_eval(self.world_asset.reset_world, env_ids)
+        self._call_train_eval(self.world_asset.reset_world, env_ids)
 
         # reset buffersew
         self.last_actions[env_ids] = 0.
@@ -744,8 +744,8 @@ class LeggedRobot(BaseTask):
                 # print(shuffled_ids)
                 
 
-                size_x, size_y = 2, 2
-                g_x, g_y = 3, 0
+                size_x, size_y = 4.5, 2.0
+                g_x, g_y = 6, 0
                 boundary_x, boundary_y = .5, .5
                 size_mid_x, size_mid_y = boundary_x * 2, boundary_y * 2
 
@@ -758,32 +758,35 @@ class LeggedRobot(BaseTask):
                 # does the same thing both conditions
                 if len(shuffled_ids) > 1:
                     margin = len(shuffled_ids)//3
-                    self.all_root_states[shuffled_ids[:margin], 0] = size_x * torch.rand(len(shuffled_ids[:margin]), dtype=torch.float, device=self.device, requires_grad=False) + min_range_x
-                    self.all_root_states[shuffled_ids[margin:(2*margin)], 0] = size_x * torch.rand(len(shuffled_ids[margin:(2*margin)]), dtype=torch.float, device=self.device, requires_grad=False) + max_range_x
+                    # self.all_root_states[shuffled_ids[:margin], 0] = size_x * torch.rand(len(shuffled_ids[:margin]), dtype=torch.float, device=self.device, requires_grad=False) + min_range_x
+                    # self.all_root_states[shuffled_ids[margin:(2*margin)], 0] = size_x * torch.rand(len(shuffled_ids[margin:(2*margin)]), dtype=torch.float, device=self.device, requires_grad=False) + max_range_x
 
-                    self.all_root_states[shuffled_ids[(2*margin):], 0] = size_mid_x * torch.rand(len(shuffled_ids[(2*margin):]), dtype=torch.float, device=self.device, requires_grad=False) + mid_range_x
+                    # self.all_root_states[shuffled_ids[(2*margin):], 0] = size_mid_x * torch.rand(len(shuffled_ids[(2*margin):]), dtype=torch.float, device=self.device, requires_grad=False) + mid_range_x
 
-                    more_margin = margin//2
+                    # more_margin = margin//2
 
-                    self.all_root_states[shuffled_ids[(2*margin):(2*margin)+more_margin], 1] = size_y * torch.rand(len(shuffled_ids[(2*margin):(2*margin)+more_margin]), dtype=torch.float, device=self.device, requires_grad=False) + min_range_y
+                    # self.all_root_states[shuffled_ids[(2*margin):(2*margin)+more_margin], 1] = size_y * torch.rand(len(shuffled_ids[(2*margin):(2*margin)+more_margin]), dtype=torch.float, device=self.device, requires_grad=False) + min_range_y
 
-                    self.all_root_states[shuffled_ids[(2*margin)+more_margin:], 1] = size_y * torch.rand(len(shuffled_ids[(2*margin)+more_margin:]), dtype=torch.float, device=self.device, requires_grad=False) + max_range_y
+                    # self.all_root_states[shuffled_ids[(2*margin)+more_margin:], 1] = size_y * torch.rand(len(shuffled_ids[(2*margin)+more_margin:]), dtype=torch.float, device=self.device, requires_grad=False) + max_range_y
+
+                    self.all_root_states[shuffled_ids, 0] = size_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + min_range_x
                     
                 else:
-                    if np.random.uniform(0, 1) > 0.5:
-                        if np.random.uniform(0, 1) > 0.5:
-                            self.all_root_states[shuffled_ids, 0] = size_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + min_range_x
-                        else:
-                            self.all_root_states[shuffled_ids, 0] = size_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + max_range_x
-                        # print('just x change', self.all_root_states[shuffled_ids])
-                    else:
-                        self.all_root_states[shuffled_ids, 0] = size_mid_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + mid_range_x
-                        if np.random.uniform(0, 1) > 0.5:
-                            self.all_root_states[shuffled_ids, 1] = size_mid_y * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + min_range_y
-                        else:
-                            self.all_root_states[shuffled_ids, 1] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + max_range_y
+                    # if np.random.uniform(0, 1) > 0.5:
+                    #     if np.random.uniform(0, 1) > 0.5:
+                    #         self.all_root_states[shuffled_ids, 0] = size_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + min_range_x
+                    #     else:
+                    #         self.all_root_states[shuffled_ids, 0] = size_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + max_range_x
+                    #     # print('just x change', self.all_root_states[shuffled_ids])
+                    # else:
+                    #     self.all_root_states[shuffled_ids, 0] = size_mid_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + mid_range_x
+                    #     if np.random.uniform(0, 1) > 0.5:
+                    #         self.all_root_states[shuffled_ids, 1] = size_mid_y * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + min_range_y
+                    #     else:
+                    #         self.all_root_states[shuffled_ids, 1] = 1. * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + max_range_y
                     
                     # print(self.base_init_state, self.all_root_states[shuffled_ids])
+                    self.all_root_states[shuffled_ids, 0] = size_x * torch.rand(len(shuffled_ids), dtype=torch.float, device=self.device, requires_grad=False) + min_range_x
 
 
             
@@ -1086,7 +1089,9 @@ class LeggedRobot(BaseTask):
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
 
-        # self.world_asset.init_buffers(root_states = self.all_root_states, dof_states = self.all_dof_state, rigid_body_states=self.all_rigid_body_state, contact_forces=self.all_contact_forces)
+        self.world_asset.init_buffers(root_states = self.all_root_states, dof_states = self.all_dof_state, rigid_body_states=self.all_rigid_body_state, contact_forces=self.all_contact_forces)
+        self.world_obs = self.world_asset.get_block_obs()
+
 
     def _init_custom_buffers__(self):
         # domain randomization properties
@@ -1275,7 +1280,10 @@ class LeggedRobot(BaseTask):
         start_pose = gymapi.Transform()
         start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
 
-        # self.box_asset = self.gym.create_box(self.sim, .5, .5, .5, gymapi.AssetOptions())
+        self.box_asset = self.gym.create_box(self.sim, .1, .1, .1, gymapi.AssetOptions())
+        
+        self.world_asset = WorldAsset(self.cfg, self.sim, self.gym, self.device)
+
 
         self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
         self.terrain_levels = torch.zeros(self.num_envs, device=self.device, requires_grad=False, dtype=torch.long)
@@ -1293,8 +1301,7 @@ class LeggedRobot(BaseTask):
         self.default_restitution = rigid_shape_props_asset[1].restitution
         self._init_custom_buffers__()
         self._call_train_eval(self._randomize_rigid_body_props, torch.arange(self.num_envs, device=self.device))
-
-        # self.world_asset = WorldAsset(self.cfg, self.sim, self.gym)
+        
 
 
         for i in range(self.num_envs):
@@ -1322,14 +1329,13 @@ class LeggedRobot(BaseTask):
             # local_transform.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0,1,0), np.radians(45.0))
             # self.gym.attach_camera_to_body(camera_handle, env_handle, self.gym.find_actor_rigid_body_handle(env_handle, anymal_handle, 'base'), local_transform, gymapi.FOLLOW_TRANSFORM)
 
-            # pos = self.env_origins[i].clone()
-            # pos[0] += 1.4; pos[1] += 0.4; pos[2] += 0.25 
-            # start_pose.p = gymapi.Vec3(*pos)
-            # box_handle = self.gym.create_actor(env_handle, self.box_asset, start_pose, "box", i,
-            #                                       self.cfg.asset.self_collisions, 0)
+            pos = self.env_origins[i].clone()
+            pos[0] += 5.0; pos[1] += 0.0; pos[2] += 0.05 
+            start_pose.p = gymapi.Vec3(*pos)
+            self.gym.create_actor(env_handle, self.box_asset, start_pose, "box", 5000, 0, 0)
             # self.box_handles.append(box_hand
             # le)
-            # self.world_asset.create_world(i, env_handle, self.env_origins[i].clone())
+            self.world_asset.create_world(i, env_handle, self.env_origins[i].clone())
             self.envs.append(env_handle)
 
         #~# go1 indices setup
@@ -1347,8 +1353,7 @@ class LeggedRobot(BaseTask):
         self.go1_rb_indices = torch.tensor(self.go1_rb_indices, device=self.device, dtype=torch.long)
         #~#
 
-        # self.world_asset.post_create_world(self.envs, self.env_origins.clone())
-
+        self.world_asset.post_create_world(self.envs, self.env_origins.clone())
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
@@ -1402,7 +1407,7 @@ class LeggedRobot(BaseTask):
     def _render_headless(self):
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
             bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
-            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
+            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx-1.0, by, bz + 2.0),
                                          gymapi.Vec3(bx, by, bz))
             self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
                                                          gymapi.IMAGE_COLOR)

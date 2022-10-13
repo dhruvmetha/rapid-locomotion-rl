@@ -2,6 +2,7 @@ import isaacgym
 assert isaacgym
 import torch
 from mini_gym.envs import *
+import wandb
 
 if __name__ == '__main__':
     from pathlib import Path
@@ -16,6 +17,9 @@ if __name__ == '__main__':
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'rapid-locomotion/%Y-%m-%d/{stem}/%H%M%S.%f'),
                      root=Path(f"{HLP_ROOT_DIR}/high_level_policy/runs").resolve(), )
+
+    wandb.init('legged_navigation')
+
     logger.log_text("""
                 charts: 
                 - yKey: train/episode/rew_total/mean

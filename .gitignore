@@ -69,3 +69,4 @@ docker/rsc
 *.jit
 tmp
 traj_images*
+wandb/

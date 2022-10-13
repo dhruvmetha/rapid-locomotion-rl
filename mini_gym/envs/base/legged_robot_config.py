@@ -11,7 +11,7 @@ class Cfg(PrefixProto, cli=False):
         privileged_future_horizon = 1
         num_actions = 12
         num_observation_history = 15
-        env_spacing = 3.  # not used with heightfields/trimeshes 
+        env_spacing = 7.  # not used with heightfields/trimeshes 
         send_timeouts = True  # send time out information to the algorithm
         episode_length_s = 20  # episode length in seconds
         observe_vel = True
@@ -100,7 +100,7 @@ class Cfg(PrefixProto, cli=False):
         heading = [-3.14, 3.14]
 
     class init_state(PrefixProto, cli=False):
-        pos = [0.0, 0.0, 1.]  # x,y,z [m]
+        pos = [-1.0, 0.0, 1.]  # x,y,z [m]
         rot = [0.0, 0.0, 0.0, 1.0]  # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]

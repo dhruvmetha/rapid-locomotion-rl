@@ -8,7 +8,7 @@ from mini_gym.envs.base.legged_robot_config import Cfg
 def config_go1(Cnfg: Union[Cfg, Meta]):
     _ = Cnfg.init_state
 
-    _.pos = [0.0, 0.0, 0.34]  # x,y,z [m]
+    _.pos = [-1.0, 0.0, 0.34]  # x,y,z [m]
     _.default_joint_angles = {  # = target angles [rad] when action = 0.0
         'FL_hip_joint': 0.1,  # [rad]
         'RL_hip_joint': 0.1,  # [rad]

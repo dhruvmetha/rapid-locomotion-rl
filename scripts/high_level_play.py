@@ -50,7 +50,7 @@ if __name__ == "__main__":
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper 
     from matplotlib import pyplot as plt
 
-    num_envs = 100
+    num_envs = 20
     env = HighLevelControlWrapper(num_envs=num_envs, headless=False)
 
     recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
@@ -67,6 +67,7 @@ if __name__ == "__main__":
         # plt.scatter(env.ll_env.all_root_states[:, 0].clone().cpu() - env.ll_env.env_origins[:, 0].clone().cpu(), env.ll_env.all_root_states[:, 1].clone().cpu() - env.ll_env.env_origins[:, 1].clone().cpu() )
         # plt.show()
         # env.reset()
+        # actions = env.distance_control()
         with torch.no_grad():
             actions = policy(obs)
         obs, rew, done, info = env.step(actions)
