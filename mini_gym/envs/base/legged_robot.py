@@ -18,6 +18,8 @@ from mini_gym.utils.terrain import Terrain
 from .legged_robot_config import Cfg
 from mini_gym.envs.world.world import WorldAsset 
 
+from high_level_policy import GOAL_POSITION_TRAIN
+
 
 class LeggedRobot(BaseTask):
     def __init__(self, cfg: Cfg, sim_params, physics_engine, sim_device, headless, eval_cfg=None,
@@ -252,6 +254,8 @@ class LeggedRobot(BaseTask):
         self._call_train_eval(self._reset_dofs, env_ids)
         self._call_train_eval(self._reset_root_states, env_ids)
         self._call_train_eval(self.world_asset.reset_world, env_ids)
+        self.world_obs = self.world_asset.get_block_obs()
+        # print(self.world_obs.shape)
 
         # reset buffersew
         self.last_actions[env_ids] = 0.
@@ -734,6 +738,7 @@ class LeggedRobot(BaseTask):
             self.root_states[go1_ids_int32, 0] += cfg.terrain.x_init_offset
             self.root_states[go1_ids_int32, 1] += cfg.terrain.y_init_offset
         else:
+            # print(self.base_init_state[:2])
             self.all_root_states[go1_ids_int32] = self.base_init_state
             # print('hereeeeee', go1_ids_int32)
             if self.random_init_states:
@@ -999,7 +1004,7 @@ class LeggedRobot(BaseTask):
         # get gym GPU state tensors
         self.actor_root_state_ptr = self.gym.acquire_actor_root_state_tensor(self.sim)
         self.dof_state_tensor_ptr = self.gym.acquire_dof_state_tensor(self.sim)
-        self.net_contact_forces_ptr= self.gym.acquire_net_contact_force_tensor(self.sim)
+        self.net_contact_forces_ptr = self.gym.acquire_net_contact_force_tensor(self.sim)
         self.rigid_body_state_ptr = self.gym.acquire_rigid_body_state_tensor(self.sim)
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
@@ -1091,6 +1096,7 @@ class LeggedRobot(BaseTask):
 
         self.world_asset.init_buffers(root_states = self.all_root_states, dof_states = self.all_dof_state, rigid_body_states=self.all_rigid_body_state, contact_forces=self.all_contact_forces)
         self.world_obs = self.world_asset.get_block_obs()
+        
 
 
     def _init_custom_buffers__(self):
@@ -1330,7 +1336,7 @@ class LeggedRobot(BaseTask):
             # self.gym.attach_camera_to_body(camera_handle, env_handle, self.gym.find_actor_rigid_body_handle(env_handle, anymal_handle, 'base'), local_transform, gymapi.FOLLOW_TRANSFORM)
 
             pos = self.env_origins[i].clone()
-            pos[0] += 5.0; pos[1] += 0.0; pos[2] += 0.05 
+            pos[0] += GOAL_POSITION_TRAIN[0]; pos[1] += 0.0; pos[2] += 0.05 
             start_pose.p = gymapi.Vec3(*pos)
             self.gym.create_actor(env_handle, self.box_asset, start_pose, "box", 5000, 0, 0)
             # self.box_handles.append(box_hand

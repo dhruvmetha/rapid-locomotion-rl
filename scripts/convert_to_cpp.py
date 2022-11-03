@@ -39,7 +39,7 @@ def load_env(headless=False):
     actor_critic.to(env.device)
     policy = actor_critic.act_inference
 
-    return policy
+    return actor_critic, policy
 
 if __name__ == "__main__":
     from tqdm import tqdm
@@ -50,31 +50,18 @@ if __name__ == "__main__":
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper 
     from matplotlib import pyplot as plt
 
-    num_envs = 2
+    num_envs = 20
     env = HighLevelControlWrapper(num_envs=num_envs, headless=False, test=True)
 
     recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
     # print(recent_runs)
     logger.configure(Path(recent_runs[-1]).resolve())
-    policy = load_env(headless=False)
-
-    num_eval_steps = 1000
-    obs = env.reset()
+    model, policy = load_env(headless=False)
 
     import torch
+    model = model.cpu()
+    example = torch.rand(1, 18).cpu()
+    actor_model = model.actor_body.cpu()
 
-    for i in tqdm(range(num_eval_steps)):
-        # plt.scatter(env.ll_env.all_root_states[:, 0].clone().cpu() - env.ll_env.env_origins[:, 0].clone().cpu(), env.ll_env.all_root_states[:, 1].clone().cpu() - env.ll_env.env_origins[:, 1].clone().cpu() )
-        # plt.show()
-        # env.reset()
-        # actions = env.distance_control()
-        with torch.no_grad():
-            actions = policy(obs)
-        obs, rew, done, info = env.step(actions)
-
-
-        print(1/torch.exp(torch.linalg.norm(obs['obs'][0, 6:8])))
-        
-        if done[0]:
-            break
-        
+    traced_script_module = torch.jit.trace(actor_model, example)
+    traced_script_module.save("./cpp_files/walking_actor_hlp_model_1025.pt")

@@ -52,13 +52,13 @@ class RunnerArgs(PrefixProto, cli=False):
 
     # logging
     save_interval = 400  # check for potential saves every this many iterations
-    save_video_interval = 100
+    save_video_interval = 50
     log_freq = 10
 
     # load and resume
     resume = False
     load_run = -1  # -1 = last run
-    checkpoint = -1  # -1 = last saved model
+    checkpoint = '/home/dhruv/projects_dhruv/og_rlvrl/high_level_policy/runs/rapid-locomotion/2022-10-26/high_level_train/013418.804555/checkpoints/ac_weights_last.pt'  # -1 = last saved model
     resume_path = None  # updated from load_run and chkpt
 
 
@@ -75,6 +75,18 @@ class Runner:
                                       self.env.num_obs_history,
                                       self.env.num_actions,
                                       ).to(self.device)
+
+        if RunnerArgs.resume:
+            print('loading walk model for init...')
+            weights = logger.load_torch(RunnerArgs.checkpoint)
+            # print(weights.keys())
+            new_weights = {'.'.join(k.split('.')[1:]):v for k,v in weights.items() if k.startswith('critic')}
+            # print(new_weights)
+            actor_critic.critic_body.load_state_dict(state_dict=new_weights)
+            # actor_critic.to(env.device)
+            print('successfully loaded walk model...')
+
+
         self.alg = PPO(actor_critic, device=self.device)
         self.num_steps_per_env = RunnerArgs.num_steps_per_env
 

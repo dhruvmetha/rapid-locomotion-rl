@@ -70,3 +70,6 @@ docker/rsc
 tmp
 traj_images*
 wandb/
+models/
+*.pt
+cpp_files/

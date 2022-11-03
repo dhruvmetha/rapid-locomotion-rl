@@ -8,7 +8,7 @@ from mini_gym.envs.base.legged_robot_config import Cfg
 def config_go1(Cnfg: Union[Cfg, Meta]):
     _ = Cnfg.init_state
 
-    _.pos = [-1.0, 0.0, 0.34]  # x,y,z [m]
+    _.pos = [0.0, 0.0, 0.34]  # x,y,z [m]
     _.default_joint_angles = {  # = target angles [rad] when action = 0.0
         'FL_hip_joint': 0.1,  # [rad]
         'RL_hip_joint': 0.1,  # [rad]
@@ -39,7 +39,7 @@ def config_go1(Cnfg: Union[Cfg, Meta]):
     _ = Cnfg.asset
     _.file = '{MINI_GYM_ROOT_DIR}/resources/robots/go1/urdf/go1.urdf'
     _.foot_name = "foot"
-    _.penalize_contacts_on = ["thigh", "calf"]
+    _.penalize_contacts_on = ["calf", "thigh"]
     _.terminate_after_contacts_on = ["base"]
     _.self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
     _.flip_visual_attachments = False
