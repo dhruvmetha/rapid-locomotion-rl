@@ -1,4 +1,4 @@
-runs
+# runs
 # Jaynes secret files
 .secret*
 # ml_logger cache files
@@ -73,3 +73,4 @@ wandb/
 models/
 *.pt
 cpp_files/
+videos/
