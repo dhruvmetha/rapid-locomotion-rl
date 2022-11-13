@@ -71,6 +71,6 @@ tmp
 traj_images*
 wandb/
 models/
-*.pt
+# *.pt
 cpp_files/
 videos/
