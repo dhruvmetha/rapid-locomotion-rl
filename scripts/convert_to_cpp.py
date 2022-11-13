@@ -60,8 +60,8 @@ if __name__ == "__main__":
 
     import torch
     model = model.cpu()
-    example = torch.rand(1, 18).cpu()
+    example = torch.rand(1, 13).cpu()
     actor_model = model.actor_body.cpu()
 
     traced_script_module = torch.jit.trace(actor_model, example)
-    traced_script_module.save("./cpp_files/walking_actor_hlp_model_1025.pt")
+    traced_script_module.save("./cpp_files/walking_with_angle_actor_hlp_model.pt")

@@ -71,13 +71,13 @@ class WorldAsset():
 
         # custom box
         if self.custom_box:
-            gym_assets.append(self.gym.create_box(self.sim, round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3, asset_options))
-            asset_names.append(world_cfg.fixed_block.name)
-            asset_pos.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15])
+            # gym_assets.append(self.gym.create_box(self.sim, round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3, asset_options))
+            # asset_names.append(world_cfg.fixed_block.name)
+            # asset_pos.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15])
 
             asset_options = gymapi.AssetOptions()
             asset_options.disable_gravity = False
-            asset_options.fix_base_link = False
+            asset_options.fix_base_link = True
             block_density = np.random.uniform(*world_cfg.movable_block.block_density_range)
             asset_options.density = block_density
 

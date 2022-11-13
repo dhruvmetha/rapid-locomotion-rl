@@ -20,9 +20,12 @@ if not os.path.exists(TRAJ_IMAGE_FOLDER):
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False, test=False):
         self.device= 'cuda:0'
-        self.num_obs = 24 if world_cfg.fixed_block.add_to_obs else 22
+        if world_cfg.CUSTOM_BLOCK:
+            self.num_obs = 24 if world_cfg.fixed_block.add_to_obs else 22
+        else:
+            self.num_obs = 13
         self.num_actions = 3
-        self.max_episode_length_s = 12
+        self.max_episode_length_s = 5 if test else 10 # 12
         self.num_privileged_obs = 18
         self.num_obs_history = 16
 
@@ -128,7 +131,7 @@ class HighLevelControlWrapper():
         return (self.goal_position - self.base_pos)
 
     def step(self, actions):
-        self.actions = torch.clamp(actions, -1., 1.)
+        self.actions = torch.clamp(actions, -0.75, 0.75)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
@@ -175,10 +178,13 @@ class HighLevelControlWrapper():
         self.base_ang_vel = self.ll_env.base_ang_vel.clone()
 
         self.world_obs = self.ll_env.world_obs
-        
 
         # self.obs_buf = torch.cat([self.base_pos,  self.base_quat, self.base_lin_vel, self.base_ang_vel, self.actions, self.world_obs], dim=-1)
-        self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.actions, self.world_obs], dim=-1)
+
+        if world_cfg.CUSTOM_BLOCK:
+            self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.actions, self.world_obs], dim=-1)
+        else:
+            self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.actions], dim=-1)
         
         # print()
         # position_x, position_y, velocity_x, velocity_y, velocity_ang, cmd (vel_x, vel_y, vel_ang), [0] * 9
@@ -332,7 +338,7 @@ class HighLevelControlWrapper():
         import os
 
         recent_runs = sorted(glob.glob(f"{MINI_GYM_ROOT_DIR}/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
-
+        print(recent_runs)
         logger.configure(Path(recent_runs[-1]).resolve())
 
         config_go1(Cfg)
@@ -466,7 +472,7 @@ class HighLevelControlWrapper():
         return (self.time_buf & self.gs_buf) * (1.0 - 1/torch.exp(torch.linalg.norm(self.base_lin_vel, dim=-1) + torch.linalg.norm(self.base_ang_vel, dim=-1)))
     
     def _reward_terminal_distance_covered(self):
-        print('terminal')
+        # print('terminal')
         # print(self.dist_travelled * 1.0)
         # return self.gs_buf * (self.dist_travelled/torch.norm(self.ll_env.go1_init_states - self.goal_position, dim=-1))
         return self.gs_buf * self.dist_travelled

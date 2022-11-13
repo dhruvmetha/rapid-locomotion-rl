@@ -50,7 +50,7 @@ if __name__ == "__main__":
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper 
     from matplotlib import pyplot as plt
 
-    num_envs = 2
+    num_envs = 10
     env = HighLevelControlWrapper(num_envs=num_envs, headless=False, test=True)
 
     recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     logger.configure(Path(recent_runs[-1]).resolve())
     policy = load_env(headless=False)
 
-    num_eval_steps = 1000
+    num_eval_steps = 10000
     obs = env.reset()
 
     import torch
