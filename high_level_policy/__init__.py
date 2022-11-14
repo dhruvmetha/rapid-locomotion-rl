@@ -48,7 +48,7 @@ class reward_scales:
     time = -0.0 # -0.1
     action_rate = -0.02
     # ll_reset = -1.0
-    lateral_vel = -0.15
-    angular_vel = -0.05
-    backward_vel = -0.05
+    lateral_vel = -0.25
+    angular_vel = -0.15
+    backward_vel = -0.15
     collision = -1.0

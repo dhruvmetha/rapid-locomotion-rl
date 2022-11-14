@@ -122,7 +122,7 @@ class WorldAsset():
      
     def init_buffers(self, **kwargs):
         """
-        world buffers for actor root states, rb, contacts
+        world buffers for actor root states, rb, coselntacts
         """
         self.all_root_states = kwargs['root_states']
         self.all_dof_state = kwargs['dof_states']
