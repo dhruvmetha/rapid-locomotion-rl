@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-from params_proto.neo_proto import PrefixProto
+from params_proto import PrefixProto
 
 from high_level_policy.ppo import ActorCritic
 from high_level_policy.ppo import RolloutStorage
@@ -61,10 +61,11 @@ class PPO:
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, privileged_obs, obs_history):
+    def act(self, obs, privileged_obs, obs_history, student=False):
         # Compute the actions and values
-        self.transition.actions = self.actor_critic.act(obs, privileged_obs).detach()
-        self.transition.values = self.actor_critic.evaluate(obs, privileged_obs).detach()
+        priv_latent, actions = self.actor_critic.act(obs, privileged_obs, student=student, observation_history=obs_history)
+        self.transition.actions = actions.detach()
+        self.transition.values = self.actor_critic.evaluate(obs, privileged_obs, student=student, observation_history=obs_history).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()
         self.transition.action_sigma = self.actor_critic.action_std.detach()
@@ -73,7 +74,7 @@ class PPO:
         self.transition.critic_observations = obs
         self.transition.privileged_observations = privileged_obs
         self.transition.observation_histories = obs_history
-        return self.transition.actions
+        return priv_latent, self.transition.actions
 
     def process_env_step(self, rewards, dones, infos):
         self.transition.rewards = rewards.clone()
@@ -89,21 +90,23 @@ class PPO:
         self.transition.clear()
         self.actor_critic.reset(dones)
 
-    def compute_returns(self, last_critic_obs, last_critic_privileged_obs):
-        last_values = self.actor_critic.evaluate(last_critic_obs, last_critic_privileged_obs).detach()
+    def compute_returns(self, last_critic_obs, last_critic_privileged_obs, **kwargs):
+        last_values = self.actor_critic.evaluate(last_critic_obs, last_critic_privileged_obs, **kwargs).detach()
         self.storage.compute_returns(last_values, PPO_Args.gamma, PPO_Args.lam)
 
-    def update(self):
+    def update(self, student=False):
         mean_value_loss = 0
         mean_surrogate_loss = 0
+        mean_reconstruction_loss = 0
         mean_adaptation_module_loss = 0
         generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, masks_batch, env_bins_batch in generator:
 
-            self.actor_critic.act(obs_batch, privileged_obs_batch, masks=masks_batch)
+            priv_obs_pred, _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
+            
             actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
-            value_batch = self.actor_critic.evaluate(critic_obs_batch, privileged_obs_batch, masks=masks_batch)
+            value_batch = self.actor_critic.evaluate(critic_obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
             mu_batch = self.actor_critic.action_mean
             sigma_batch = self.actor_critic.action_std
             entropy_batch = self.actor_critic.entropy
@@ -142,8 +145,12 @@ class PPO:
                 value_loss = torch.max(value_losses, value_losses_clipped).mean()
             else:
                 value_loss = (returns_batch - value_batch).pow(2).mean()
-
+            
             loss = surrogate_loss + PPO_Args.value_loss_coef * value_loss - PPO_Args.entropy_coef * entropy_batch.mean()
+            
+            if USE_LATENT:
+                reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
+                loss += reconstruction_loss 
 
             # Gradient step
             self.optimizer.zero_grad()
@@ -155,28 +162,34 @@ class PPO:
             mean_surrogate_loss += surrogate_loss.item()
 
             if USE_LATENT:
+                mean_reconstruction_loss += reconstruction_loss.item()
+                # reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
+                
+                if not student:
                 # Adaptation module gradient step
-                for epoch in range(PPO_Args.num_adaptation_module_substeps):
-                    adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-                    with torch.no_grad():
-                        adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
-                        residual = (adaptation_target - adaptation_pred).norm(dim=1)
-                        # caches.slot_cache.log(env_bins_batch[:, 0].cpu().numpy().astype(np.uint8),
-                        #                       sysid_residual=residual.cpu().numpy())
+                    for epoch in range(PPO_Args.num_adaptation_module_substeps):
+                        adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+                        with torch.no_grad():
+                            adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+                            # residual = (adaptation_target - adaptation_pred).norm(dim=1)
+                            # caches.slot_cache.log(env_bins_batch[:, 0].cpu().numpy().astype(np.uint8),
+                            #                       sysid_residual=residual.cpu().numpy())
 
-                    adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+                        adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
 
-                    self.adaptation_module_optimizer.zero_grad()
-                    adaptation_loss.backward()
-                    self.adaptation_module_optimizer.step()
+                        self.adaptation_module_optimizer.zero_grad()
+                        adaptation_loss.backward()
+                        self.adaptation_module_optimizer.step()
 
-                    mean_adaptation_module_loss += adaptation_loss.item()
+                        mean_adaptation_module_loss += adaptation_loss.item()
 
         num_updates = PPO_Args.num_learning_epochs * PPO_Args.num_mini_batches
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
+        mean_reconstruction_loss /= num_updates
         if USE_LATENT:
-            mean_adaptation_module_loss /= (num_updates * PPO_Args.num_adaptation_module_substeps)
+            if not student:
+                mean_adaptation_module_loss /= (num_updates * PPO_Args.num_adaptation_module_substeps)
         self.storage.clear()
 
-        return mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss
+        return mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss

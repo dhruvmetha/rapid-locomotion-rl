@@ -1,6 +1,6 @@
 # License: see [LICENSE, LICENSES/legged_gym/LICENSE]
 
-from params_proto.neo_proto import PrefixProto, ParamsProto
+from params_proto import PrefixProto, ParamsProto
 
 
 class Cfg(PrefixProto, cli=False):
@@ -231,8 +231,8 @@ class Cfg(PrefixProto, cli=False):
     # viewer camera:
     class viewer(PrefixProto, cli=False):
         ref_env = 0
-        pos = [6, 0, 10]  # [m]
-        lookat = [3., 0, 3.]  # [m]
+        pos = [-5, 0, 4]  # [m]
+        lookat = [1., 0, 3.]  # [m]
 
     class sim(PrefixProto, cli=False):
         dt = 0.005

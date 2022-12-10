@@ -42,7 +42,7 @@ class BaseTask(gym.Env):
 
         if eval_cfg is not None:
             self.num_eval_envs = eval_cfg.env.num_envs
-            self.num_train_envs = cfg.env.num_envs
+            self.num_train_envs = cfg.env.num_envs - eval_cfg.env.num_envs
             self.num_envs = self.num_eval_envs + self.num_train_envs
         else:
             self.num_eval_envs = 0

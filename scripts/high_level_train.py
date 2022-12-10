@@ -25,7 +25,7 @@ if __name__ == '__main__':
     # print(args.accumulate(args.integers))
 
 
-    num_envs = 2048
+    num_envs = 4096
     env = HighLevelControlWrapper(num_envs=num_envs, headless=True, test=False)
 
     stem = Path(__file__).stem
@@ -51,4 +51,4 @@ if __name__ == '__main__':
                 
     gpu_id = 0
     runner = Runner(env, device=f"cuda:{gpu_id}")
-    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=True)
+    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=False)

@@ -35,9 +35,20 @@ class WorldAsset():
         self.env_assets_map = {}
         self.env_actor_indices_map = {}
         self.all_actor_base_postions = {}
+        self.variables = None
+
+        self.contact_memory_time = 20
 
         self.block_size = torch.zeros((self.num_envs, 2), device=self.device, dtype=torch.float, requires_grad=False)
         self.block_weight = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.float, requires_grad=False)
+
+        self.fixed_block_size = torch.zeros((self.num_envs, 2), device=self.device, dtype=torch.float, requires_grad=False)
+
+        self.block_contact_buf = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.bool, requires_grad=False)
+        self.block_contact_ctr = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.int, requires_grad=False) + self.contact_memory_time + 1
+
+        self.fixed_block_contact_buf = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.bool, requires_grad=False)
+        self.fixed_block_contact_ctr = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.int, requires_grad=False) + self.contact_memory_time + 1
 
     def define_world(self, env_id):
         """
@@ -71,10 +82,16 @@ class WorldAsset():
 
         # custom box
         if self.custom_box:
-            gym_assets.append(self.gym.create_box(self.sim, round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3, asset_options))
+            asset_options = gymapi.AssetOptions()
+            asset_options.disable_gravity = False
+            asset_options.fix_base_link = False
+            asset_options.density = 10000
+            asset_size = [round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3]
+            gym_assets.append(self.gym.create_box(self.sim, *asset_size, asset_options))
             asset_names.append(world_cfg.fixed_block.name)
             asset_pos.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15])
-
+            self.fixed_block_size[env_id, :] = torch.tensor(asset_size[:2])
+            
             asset_options = gymapi.AssetOptions()
             asset_options.disable_gravity = False
             asset_options.fix_base_link = False
@@ -94,6 +111,10 @@ class WorldAsset():
         assets_container = [AssetDef(asset, name, pos) for asset, name, pos in zip(gym_assets, asset_names, asset_pos)]
 
         return assets_container
+
+    def add_variables(self, **kwargs):
+        print('here', kwargs)
+        self.variables = kwargs
 
     def create_world(self, env_id, env_handle, env_origin):
         """
@@ -149,6 +170,9 @@ class WorldAsset():
                     base_positions.append([round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2])
 
                 elif asset.name == world_cfg.fixed_block.name:
+                    # if np.random.uniform(0, 1) < 0.6:
+                    #     base_positions.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(-0.4, 0.4), 2), 0.2])
+                    # else:
                     base_positions.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), 0.2])
                 # elif asset.name == 'wall_front':
                 #     if np.random.uniform(0, 1) > 0.5:
@@ -164,18 +188,66 @@ class WorldAsset():
         self.all_root_states[actor_indices, :3] = base_positions + env_origins
         self.all_root_states[actor_indices, 3:] = 0.
         self.all_root_states[actor_indices, 6] = 1. 
+        self.block_contact_buf[:] = False
+        self.block_contact_ctr[:] = self.contact_memory_time + 1
+
+        self.fixed_block_contact_buf[:] = False
+        self.fixed_block_contact_ctr[:] = self.contact_memory_time + 1
+
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.all_root_states), gymtorch.unwrap_tensor(actor_indices.to(dtype=torch.int32)), len(actor_indices))
 
     def get_block_obs(self):
         if self.custom_box:
+            # print('here')
+            
             block_ids_int32 = torch.tensor([self.gym.find_actor_index(self.envs[i], world_cfg.movable_block.name, gymapi.DOMAIN_SIM) for i in range(self.num_envs)], dtype=torch.long, device=self.device)
-            obs = torch.cat([(self.all_root_states[block_ids_int32, :2] - self.env_origins[:, :2]).clone(), self.all_root_states[block_ids_int32, 3:7].clone(), self.block_size.clone(), self.block_weight.clone()], dim=-1)
+            
+            mbox_actor_handles = [self.gym.find_actor_handle(self.envs[i], world_cfg.movable_block.name) for i in range(self.num_envs)]            
+            block_ids_int32_contact = torch.tensor([self.gym.find_actor_rigid_body_index(i, j, "box", gymapi.DOMAIN_SIM) for i, j in zip(self.envs, mbox_actor_handles)], dtype=torch.long, device=self.device)
+            
+
+            
+            # print(block_ids_int32, block_ids_int32_contact)  
+
+            # print('here')
+
+            obs = torch.cat([(self.all_root_states[block_ids_int32, :2] - self.env_origins[:, :2]).clone(), self.all_root_states[block_ids_int32, 3:7].clone(), self.block_size.clone()], dim=-1)
+            
+            block_contact_buf = (torch.linalg.norm(self.all_contact_forces[block_ids_int32_contact, :2], dim=-1) > 1.).view(-1, 1)
+            self.block_contact_ctr = (~block_contact_buf) * self.block_contact_ctr
+            self.block_contact_buf = self.block_contact_ctr < self.contact_memory_time
+            self.block_contact_ctr[self.block_contact_ctr < self.contact_memory_time] += 1
+
+            # print('movable', block_contact_buf[0], self.block_contact_ctr[0], self.block_contact_buf[0])
+
+            see_obs = self.variables['all_obs_ids']
+
+            extra_contact_obs = self.block_weight.clone() # * (self.block_contact_buf | see_obs.view(-1, 1)).view(-1, 1)
+            obs = torch.cat([obs, extra_contact_obs], dim=-1)
+            obs *= (self.block_contact_buf | see_obs.view(-1, 1)).view(-1, 1)
 
             if world_cfg.fixed_block.add_to_obs:
                 fixed_block_ids = torch.tensor([self.gym.find_actor_index(self.envs[i], world_cfg.fixed_block.name, gymapi.DOMAIN_SIM) for i in range(self.num_envs)], dtype=torch.long, device=self.device)
-                obs = torch.cat([obs, (self.all_root_states[fixed_block_ids, :2] - self.env_origins[:, :2]).clone()], dim=-1)
+
+                fbox_actor_handles = [self.gym.find_actor_handle(self.envs[i], world_cfg.movable_block.name) for i in range(self.num_envs)]            
+                fixed_block_ids_contact = torch.tensor([self.gym.find_actor_rigid_body_index(i, j, "box", gymapi.DOMAIN_SIM) for i, j in zip(self.envs, fbox_actor_handles)], dtype=torch.long, device=self.device)
+
+
+
+                fixed_block_contact_buf = (torch.linalg.norm(self.all_contact_forces[fixed_block_ids_contact, :2], dim=-1) > 1.).view(-1, 1)
+                self.fixed_block_contact_ctr = (~fixed_block_contact_buf) * self.fixed_block_contact_ctr
+                self.fixed_block_contact_buf = self.fixed_block_contact_ctr < self.contact_memory_time
+                self.fixed_block_contact_ctr[self.fixed_block_contact_ctr < self.contact_memory_time] += 1
+                
+
+                fixed_block_obs = torch.cat([(self.all_root_states[fixed_block_ids, :2] - self.env_origins[:, :2]).clone(), self.fixed_block_size.clone()], dim=-1)
+                self.fixed_block_contact_buf |= see_obs.view(-1, 1)
+                fixed_block_obs *= self.fixed_block_contact_buf.int()
+
+                obs = torch.cat([obs, fixed_block_obs], dim=-1)
+
             return obs
         if world_cfg.fixed_block.add_to_obs:
-            return torch.zeros(self.num_envs, 11, device=self.device)
+            return torch.zeros(self.num_envs, 13, device=self.device)
         
         return torch.zeros(self.num_envs, 9, device=self.device)

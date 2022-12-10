@@ -1,6 +1,6 @@
 from typing import Union
 
-from params_proto.neo_proto import Meta
+from params_proto import Meta
 
 from mini_gym.envs.base.legged_robot_config import Cfg
 
@@ -39,8 +39,8 @@ def config_go1(Cnfg: Union[Cfg, Meta]):
     _ = Cnfg.asset
     _.file = '{MINI_GYM_ROOT_DIR}/resources/robots/go1/urdf/go1.urdf'
     _.foot_name = "foot"
-    _.penalize_contacts_on = ["calf", "thigh"]
-    _.terminate_after_contacts_on = ["base"]
+    _.penalize_contacts_on = ["calf", "thigh", "base"]
+    _.terminate_after_contacts_on = []
     _.self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
     _.flip_visual_attachments = False
     _.fix_base_link = False
