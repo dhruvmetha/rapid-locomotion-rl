@@ -23,7 +23,7 @@ class HighLevelControlWrapper():
         self.device= 'cuda:0'
         self.num_actions = 3
         self.max_episode_length_s = 12
-        self.num_privileged_obs = 13 if world_cfg.fixed_block.add_to_obs else 9
+        self.num_privileged_obs = 32 # 13 if world_cfg.fixed_block.add_to_obs else 9
         # self.num_obs = (13 + self.num_privileged_obs) if not USE_LATENT else 13
         self.num_obs = (13) if not USE_LATENT else 13
         # self.num_privileged_obs += 24 # + 17
@@ -532,7 +532,7 @@ class HighLevelControlWrapper():
         from mini_gym_learn.ppo.actor_critic import ActorCritic
 
         actor_critic = ActorCritic(
-            num_obs=Cfg.env.num_observations, 
+            num_obs=Cfg.env.num_observations,
             num_privileged_obs=Cfg.env.num_privileged_obs,
             num_obs_history=Cfg.env.num_observations * \
                             Cfg.env.num_observation_history,

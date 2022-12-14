@@ -16,12 +16,12 @@ class AC_Args(PrefixProto, cli=False):
 
     adaptation_module_branch_hidden_dims = [[256, 128]]
 
-    env_factor_encoder_branch_input_dims = [13 if world_cfg.fixed_block.add_to_obs else 9]
-    env_factor_encoder_branch_latent_dims = [6 if world_cfg.fixed_block.add_to_obs else 4]
+    env_factor_encoder_branch_input_dims = [32 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_encoder_branch_latent_dims = [16 if world_cfg.fixed_block.add_to_obs else 4]
     env_factor_encoder_branch_hidden_dims = [[256, 128]]
 
-    env_factor_decoder_branch_input_dims = [6 if world_cfg.fixed_block.add_to_obs else 4]
-    env_factor_decoder_branch_latent_dims = [13 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_decoder_branch_input_dims = [16 if world_cfg.fixed_block.add_to_obs else 4]
+    env_factor_decoder_branch_latent_dims = [32 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_decoder_branch_hidden_dims = [[256, 128]]
 
 
@@ -162,6 +162,7 @@ class ActorCritic(nn.Module):
 
     def update_distribution(self, observations, privileged_observations, student=False, observation_history=None):
         priv_obs_pred = None
+        latent = None
         if USE_LATENT:
             if student:
                 if observation_history is None:
@@ -174,11 +175,11 @@ class ActorCritic(nn.Module):
         else:
             mean = self.actor_body(observations)
         self.distribution = Normal(mean, mean * 0. + self.std)
-        return priv_obs_pred
+        return priv_obs_pred, latent
 
     def act(self, observations, privileged_observations, **kwargs):
-        priv_obs_pred = self.update_distribution(observations, privileged_observations, student=kwargs['student'], observation_history=kwargs['observation_history'])
-        return priv_obs_pred, self.distribution.sample()
+        priv_obs_pred, latent = self.update_distribution(observations, privileged_observations, student=kwargs['student'], observation_history=kwargs['observation_history'])
+        return (priv_obs_pred, latent), self.distribution.sample()
 
     def get_actions_log_prob(self, actions):
         return self.distribution.log_prob(actions).sum(dim=-1)

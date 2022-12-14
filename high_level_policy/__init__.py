@@ -7,7 +7,6 @@ import glob
 HLP_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # print(HLP_ROOT_DIR)
 HLP_ENVS_DIR = os.path.join(HLP_ROOT_DIR, 'high_level_policy', 'envs')
-
 RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
 PURE_RL_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/models/pure_rl_model"
 TEACHER_STUDENT_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/2022-11-29/high_level_train/122321.034489"
@@ -54,13 +53,13 @@ class reward_scales:
     # step rewards
     distance_gs  = 1.
     velocity_gs = 1.
-    distance = -0.75       # 1 - 1/exp(distance to goal)
+    distance = -1.0       # 1 - 1/exp(distance to goal)
     time = -0.0 # -0.1
     action_rate = -0.05
     # ll_reset = -1.0
     lateral_vel = -0.025
     angular_vel = -0.025
-    backward_vel = -0.15
+    backward_vel = -0.025
     collision = -0.05
 
 

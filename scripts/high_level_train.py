@@ -25,7 +25,7 @@ if __name__ == '__main__':
     # print(args.accumulate(args.integers))
 
 
-    num_envs = 4096
+    num_envs = 3000
     env = HighLevelControlWrapper(num_envs=num_envs, headless=True, test=False)
 
     stem = Path(__file__).stem

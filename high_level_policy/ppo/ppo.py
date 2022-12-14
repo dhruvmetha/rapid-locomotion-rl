@@ -103,7 +103,7 @@ class PPO:
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, masks_batch, env_bins_batch in generator:
 
-            priv_obs_pred, _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
+            (priv_obs_pred, latent_pred), _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
             
             actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
             value_batch = self.actor_critic.evaluate(critic_obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
@@ -150,7 +150,15 @@ class PPO:
             
             if USE_LATENT:
                 reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
-                loss += reconstruction_loss 
+                loss += reconstruction_loss
+
+                if student:
+                    with torch.no_grad():
+                        adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+                    
+                    adaptation_loss = F.mse_loss(latent_pred, adaptation_target)
+                    loss += adaptation_loss
+                    mean_adaptation_module_loss += adaptation_loss.item()
 
             # Gradient step
             self.optimizer.zero_grad()
@@ -168,6 +176,7 @@ class PPO:
                 if not student:
                 # Adaptation module gradient step
                     for epoch in range(PPO_Args.num_adaptation_module_substeps):
+                        
                         adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
                         with torch.no_grad():
                             adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
@@ -182,6 +191,23 @@ class PPO:
                         self.adaptation_module_optimizer.step()
 
                         mean_adaptation_module_loss += adaptation_loss.item()
+                # else:
+                #     for epoch in range(PPO_Args.num_adaptation_module_substeps):
+                #         adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+                #         with torch.no_grad():
+                #             adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+                #             # residual = (adaptation_target - adaptation_pred).norm(dim=1)
+                #             # caches.slot_cache.log(env_bins_batch[:, 0].cpu().numpy().astype(np.uint8),
+                #             #                       sysid_residual=residual.cpu().numpy())
+
+                #         adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+
+                #         self.adaptation_module_optimizer.zero_grad()
+                #         adaptation_loss.backward()
+                #         self.adaptation_module_optimizer.step()
+
+                #         mean_adaptation_module_loss += adaptation_loss.item()
+                    
 
         num_updates = PPO_Args.num_learning_epochs * PPO_Args.num_mini_batches
         mean_value_loss /= num_updates
@@ -190,6 +216,8 @@ class PPO:
         if USE_LATENT:
             if not student:
                 mean_adaptation_module_loss /= (num_updates * PPO_Args.num_adaptation_module_substeps)
+            else:
+                mean_adaptation_module_loss /= num_updates
         self.storage.clear()
 
         return mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss
