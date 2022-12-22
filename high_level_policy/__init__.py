@@ -17,19 +17,43 @@ USE_LATENT = True
 
 STEP_SIZE = 2
 GOAL_THRESHOLD = 0.1
-GOAL_POSITION_TRAIN = [3.5, 0]
-GOAL_POSITION_VAL = [3.5, 0]
+GOAL_POSITION_TRAIN = [4.0, 0]
+GOAL_POSITION_VAL = [4.0, 0]
 TRAJ_IMAGE_FOLDER = f'traj_push_obs_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
-ROLLOUT_HISTORY = 100
+ROLLOUT_HISTORY = 50
+OCCUPANCY_GRID = False
+STUDENT_ENCODING = 4000
+EVAL_RATIO = .90
+MAX_EPISODE_LENGTH = 20
 
 # BLOCK
+# class world_cfg:
+#     CUSTOM_BLOCK = True
+#     class movable_block:
+#         name = 'movable_block'
+#         size_x_range = [0.3, 0.3]
+#         size_y_range = [1.8, 1.8] # [0.8, 1.5]
+#         pos_x_range = [1.4, 1.5]
+#         pos_y_range = [-0.0, 0.0]
+#         block_density_range = [1, 6]
+
+#     class fixed_block:
+#         add_to_obs = True
+#         name = 'fixed_block'
+#         num_obs = 2
+#         size_x_range = [0.3, 0.3]
+#         size_y_range = [0.5, 0.6] # [0.8, 1.5]
+#         pos_x_range = [1.8, 1.95]
+#         pos_y_range = [-0.6, 0.6]
+
+
 class world_cfg:
     CUSTOM_BLOCK = True
     class movable_block:
         name = 'movable_block'
-        size_x_range = [0.3, 0.3]
-        size_y_range = [1.8, 1.8] # [0.8, 1.5]
-        pos_x_range = [1.4, 1.5]
+        size_x_range = [0.2, 0.4]
+        size_y_range = [1.0, 1.0] # [0.8, 1.5]
+        pos_x_range = [1.0, 1.5]
         pos_y_range = [-0.0, 0.0]
         block_density_range = [1, 6]
 
@@ -37,30 +61,30 @@ class world_cfg:
         add_to_obs = True
         name = 'fixed_block'
         num_obs = 2
-        size_x_range = [0.3, 0.3]
-        size_y_range = [0.5, 0.6] # [0.8, 1.5]
+        size_x_range = [0.1, 0.5]
+        size_y_range = [0.3, 0.8] # [0.5, 0.6] # [0.8, 1.5]
         pos_x_range = [1.8, 1.95]
-        pos_y_range = [-0.6, 0.6]
+        pos_y_range = [-0.5, 0.5]
 
 class reward_scales:
     # terminal rewards
     terminal_distance_covered = -0.0
-    terminal_distance_gs = 2.0
+    terminal_distance_gs = 10.0
     terminal_ll_reset = -5.0
-    terminal_time_out = -1.0
+    terminal_time_out = -5.0
     terminal_gs_velocity = -2.0
 
     # step rewards
     distance_gs  = 1.
     velocity_gs = 1.
-    distance = -1.0       # 1 - 1/exp(distance to goal)
+    distance = -1.       # 1 - 1/exp(distance to goal)
     time = -0.0 # -0.1
     action_rate = -0.05
     # ll_reset = -1.0
     lateral_vel = -0.025
     angular_vel = -0.025
     backward_vel = -0.025
-    collision = -0.05
+    collision = -0.025
 
 
 # def euler_from_quaternion(x, y, z, w):

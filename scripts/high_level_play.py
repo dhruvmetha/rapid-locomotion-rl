@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib import patches as pch
 # import matplotlib.animation as animation
 import pickle
+import argparse
 
 def load_env(headless=False):
     from ml_logger import logger
@@ -77,6 +78,34 @@ def get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred):
         patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label=f'pred_mov_{i}'))
     return patch_set
 
+
+def random_actions_policy(obs):
+    num_envs, _ = obs.shape
+    device = obs.device
+    return 1.5 * torch.rand((num_envs, 3), device=device) - 0.75
+    
+def straight_policy(obs):
+    num_envs, _ = obs.shape
+    device = obs.device
+    actions = torch.zeros((num_envs, 3), device=device)
+    actions[:, 0] = 0.75
+    return actions
+
+def heuristic_policy(obs):
+    pass
+
+def teacher_policy(obs, policy):
+    priv_obs_pred_all, actions = policy(obs)
+    return priv_obs_pred_all, actions
+
+def student_policy(obs, policy):
+    priv_obs_pred_all, actions = policy(obs)
+    return priv_obs_pred_all, actions
+
+def full_teacher_policy(obs, policy):
+    priv_obs_pred_all, actions = policy(obs)
+    return priv_obs_pred_all, actions
+
 if __name__ == "__main__":
     from tqdm import tqdm
     from pathlib import Path
@@ -86,8 +115,22 @@ if __name__ == "__main__":
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper 
     from matplotlib import pyplot as plt
 
-    num_envs = 2048  
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=True, test=True)
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument('--num_envs', type=int, default=2500,
+                        help='the number of environments to run')
+    
+    parser.add_argument('--head', action='store_false', default=True,
+                        help='run in headless mode')
+
+    args = parser.parse_args()
+
+    print(args.num_envs)
+    print(args.head)
+
+
+    num_envs = args.num_envs  
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=args.head, test=True)
 
     # recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
     model_path = EVAL_MODEL_PATH
@@ -116,15 +159,15 @@ if __name__ == "__main__":
         with torch.no_grad():
             priv_obs_pred_all, actions = policy_student(obs)
         priv_obs_pred = priv_obs_pred_all[0]
-        patch_set = get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred)
-        patches.append(patch_set)
+        # patch_set = get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred)
+        # patches.append(patch_set)
         obs, rew, done, info = env.step(actions)
-        if done[0]:
-            if not os.path.exists(plots_path):
-                os.makedirs(plots_path)
-            with open(f"{plots_path}/{i}.pkl", 'wb') as f:
-                pickle.dump(patches, f)
-            patches = []
+        # if done[0]:
+        #     if not os.path.exists(plots_path):
+        #         os.makedirs(plots_path)
+        #     with open(f"{plots_path}/{i}.pkl", 'wb') as f:
+        #         pickle.dump(patches, f)
+        #     patches = []
 
     # print(info['train/episode']['success'])
     print(info['train/success'], info['train/failure'])

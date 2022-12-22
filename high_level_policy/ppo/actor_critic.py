@@ -16,12 +16,12 @@ class AC_Args(PrefixProto, cli=False):
 
     adaptation_module_branch_hidden_dims = [[256, 128]]
 
-    env_factor_encoder_branch_input_dims = [32 if world_cfg.fixed_block.add_to_obs else 9]
-    env_factor_encoder_branch_latent_dims = [16 if world_cfg.fixed_block.add_to_obs else 4]
+    env_factor_encoder_branch_input_dims = [36 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_encoder_branch_latent_dims = [20 if world_cfg.fixed_block.add_to_obs else 4]
     env_factor_encoder_branch_hidden_dims = [[256, 128]]
 
-    env_factor_decoder_branch_input_dims = [16 if world_cfg.fixed_block.add_to_obs else 4]
-    env_factor_decoder_branch_latent_dims = [32 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_decoder_branch_input_dims = [20 if world_cfg.fixed_block.add_to_obs else 4]
+    env_factor_decoder_branch_latent_dims = [36 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_decoder_branch_hidden_dims = [[256, 128]]
 
 
@@ -42,45 +42,117 @@ class ActorCritic(nn.Module):
         
         total_latent_dim = 0
         if USE_LATENT:
-            for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
-                    zip(AC_Args.env_factor_encoder_branch_input_dims,
-                        AC_Args.env_factor_encoder_branch_hidden_dims,
-                        AC_Args.env_factor_encoder_branch_latent_dims)):
-                # Env factor encoder
-                env_factor_encoder_layers = []
-                env_factor_encoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
-                env_factor_encoder_layers.append(activation)
-                for l in range(len(branch_hidden_dims)):
-                    if l == len(branch_hidden_dims) - 1:
-                        env_factor_encoder_layers.append(
-                            nn.Linear(branch_hidden_dims[l], branch_latent_dim))
-                    else:
-                        env_factor_encoder_layers.append(
-                            nn.Linear(branch_hidden_dims[l],
-                                    branch_hidden_dims[l + 1]))
-                        env_factor_encoder_layers.append(activation)
-            self.env_factor_encoder = nn.Sequential(*env_factor_encoder_layers)
-            self.add_module(f"encoder", self.env_factor_encoder)
+            if OCCUPANCY_GRID:
+                for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
+                        zip(AC_Args.env_factor_encoder_branch_input_dims,
+                            AC_Args.env_factor_encoder_branch_hidden_dims,
+                            AC_Args.env_factor_encoder_branch_latent_dims)):
+                    # Env factor encoder
+                    env_factor_encoder_layers = []
 
-            for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
-                    zip(AC_Args.env_factor_decoder_branch_input_dims,
-                        AC_Args.env_factor_decoder_branch_hidden_dims,
-                        AC_Args.env_factor_decoder_branch_latent_dims)):
-                # Env factor decoder
-                env_factor_decoder_layers = []
-                env_factor_decoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
-                env_factor_decoder_layers.append(activation)
-                for l in range(len(branch_hidden_dims)):
-                    if l == len(branch_hidden_dims) - 1:
-                        env_factor_decoder_layers.append(
-                            nn.Linear(branch_hidden_dims[l], branch_latent_dim))
-                    else:
-                        env_factor_decoder_layers.append(
-                            nn.Linear(branch_hidden_dims[l],
-                                    branch_hidden_dims[l + 1]))
-                        env_factor_decoder_layers.append(activation)
-            self.env_factor_decoder = nn.Sequential(*env_factor_decoder_layers)
-            self.add_module(f"decoder", self.env_factor_decoder)
+                    env_factor_encoder_layers.append(
+                        nn.Conv2d(in_channels=1, out_channels=16, kernel_size=3, stride=1))
+
+                    
+                    env_factor_encoder_layers.append(activation)
+
+                    
+                    for l in range(len(branch_hidden_dims)):
+                        if l == len(branch_hidden_dims) - 1:
+                            
+                            env_factor_encoder_layers.append(
+                                nn.Conv2d(in_channels=branch_hidden_dims[l],
+                                        out_channels=branch_latent_dim,
+                                        kernel_size=3,
+                                        stride=1))
+                        else:
+                            
+                            env_factor_encoder_layers.append(
+                                nn.Conv2d(in_channels=branch_hidden_dims[l],
+                                        out_channels=branch_hidden_dims[l + 1],
+                                        kernel_size=3,
+                                        stride=1))
+
+                            env_factor_encoder_layers.append(activation)
+
+                self.env_factor_encoder = nn.Sequential(*env_factor_encoder_layers)
+                self.add_module(f"encoder", self.env_factor_encoder)
+
+
+                for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
+                        zip(AC_Args.env_factor_decoder_branch_input_dims,
+                            AC_Args.env_factor_decoder_branch_hidden_dims,
+                            AC_Args.env_factor_decoder_branch_latent_dims)):
+                    # Env factor decoder
+                    env_factor_decoder_layers = []
+
+                   
+                    env_factor_decoder_layers.append(
+                        nn.ConvTranspose2d(in_channels=1, out_channels=16, kernel_size=3, stride=1))
+
+                    env_factor_decoder_layers.append(activation)
+
+                    
+                    for l in range(len(branch_hidden_dims)):
+                        if l == len(branch_hidden_dims) - 1:
+                            
+                            env_factor_decoder_layers.append(
+                                nn.ConvTranspose2d(in_channels=branch_hidden_dims[l],
+                                                out_channels=branch_latent_dim,
+                                                kernel_size=3,
+                                                stride=1))
+                        else:
+                            env_factor_decoder_layers.append(
+                                nn.ConvTranspose2d(in_channels=branch_hidden_dims[l],
+                                                out_channels=branch_hidden_dims[l + 1],
+                                                kernel_size=3,
+                                                stride=1))
+                            
+                            env_factor_decoder_layers.append(activation)
+                self.env_factor_decoder = nn.Sequential(*env_factor_decoder_layers)
+                self.add_module(f"decoder", self.env_factor_decoder)
+
+            else:
+
+                for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
+                        zip(AC_Args.env_factor_encoder_branch_input_dims,
+                            AC_Args.env_factor_encoder_branch_hidden_dims,
+                            AC_Args.env_factor_encoder_branch_latent_dims)):
+                    # Env factor encoder
+                    env_factor_encoder_layers = []
+                    env_factor_encoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
+                    env_factor_encoder_layers.append(activation)
+                    for l in range(len(branch_hidden_dims)):
+                        if l == len(branch_hidden_dims) - 1:
+                            env_factor_encoder_layers.append(
+                                nn.Linear(branch_hidden_dims[l], branch_latent_dim))
+                        else:
+                            env_factor_encoder_layers.append(
+                                nn.Linear(branch_hidden_dims[l],
+                                        branch_hidden_dims[l + 1]))
+                            env_factor_encoder_layers.append(activation)
+                self.env_factor_encoder = nn.Sequential(*env_factor_encoder_layers)
+                self.add_module(f"encoder", self.env_factor_encoder)
+
+                for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
+                        zip(AC_Args.env_factor_decoder_branch_input_dims,
+                            AC_Args.env_factor_decoder_branch_hidden_dims,
+                            AC_Args.env_factor_decoder_branch_latent_dims)):
+                    # Env factor decoder
+                    env_factor_decoder_layers = []
+                    env_factor_decoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
+                    env_factor_decoder_layers.append(activation)
+                    for l in range(len(branch_hidden_dims)):
+                        if l == len(branch_hidden_dims) - 1:
+                            env_factor_decoder_layers.append(
+                                nn.Linear(branch_hidden_dims[l], branch_latent_dim))
+                        else:
+                            env_factor_decoder_layers.append(
+                                nn.Linear(branch_hidden_dims[l],
+                                        branch_hidden_dims[l + 1]))
+                            env_factor_decoder_layers.append(activation)
+                self.env_factor_decoder = nn.Sequential(*env_factor_decoder_layers)
+                self.add_module(f"decoder", self.env_factor_decoder)
 
             # Adaptation module
             for i, (branch_hidden_dims, branch_latent_dim) in enumerate(zip(AC_Args.adaptation_module_branch_hidden_dims,

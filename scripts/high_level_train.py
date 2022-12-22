@@ -15,18 +15,29 @@ if __name__ == '__main__':
     from high_level_policy.ppo import Runner
 
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--iter', type=int, default=5000, help='an integer for the accumulator')
-    # parser.add_argument('--envs', 
-    #                     const=sum, default=max,
-    #                     help='sum the integers (default: find the max)')
+    parser = argparse.ArgumentParser()
 
-    # args = parser.parse_args()
-    # print(args.accumulate(args.integers))
+    # add a positional argument for the number of environments
+    # the type of this argument will be an integer
+    # the default value will be 2500
+    parser.add_argument('--num_envs', type=int, default=2500,
+                        help='the number of environments to run')
+
+    # add an optional argument for running in headless mode
+    # this argument will be a boolean value (True or False)
+    # the default value will be True
+    parser.add_argument('--head', action='store_false', default=True,
+                        help='run in headless mode')
+
+    # parse the command line arguments
+    args = parser.parse_args()
+
+    print(args.num_envs)
+    print(args.head)
 
 
-    num_envs = 3000
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=True, test=False)
+    num_envs = args.num_envs
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=args.head, test=False)
 
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'rapid-locomotion/%Y-%m-%d/{stem}/%H%M%S.%f'),

@@ -6,6 +6,7 @@ import torch
 import time
 
 from high_level_policy import *
+from mini_gym.envs.world.world_config import *
 
 class AssetDef:
     def __init__(self, asset, name, base_position) -> None:
@@ -31,13 +32,12 @@ class WorldAsset():
         self.sim = sim
         self.cfg = cfg
         self.num_envs = self.cfg.env.num_envs # gets initialized in post_create_world
+        self.num_train_envs = max(1, int(self.num_envs*EVAL_RATIO)) # gets initialized in post_create_world
         self.device = device
 
-        # self.world_cfg = world_cfg()
 
         self.custom_box = world_cfg.CUSTOM_BLOCK
-        # self.size_x_range = world_cfg.size_x_range
-        # self.size_y_range = world_cfg.size_y_range
+
 
         # initialize buffers and variables needed for the world actors
         self.handles = {}
@@ -48,82 +48,16 @@ class WorldAsset():
 
         self.contact_memory_time = 20
 
-        # self.block_size = torch.zeros((self.num_envs, 2), device=self.device, dtype=torch.float, requires_grad=False)
-        # self.block_weight = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.float, requires_grad=False)
+      
 
-        # self.fixed_block_size = torch.zeros((self.num_envs, 2), device=self.device, dtype=torch.float, requires_grad=False)
+        self.inplay_assets =  INPLAY_ASSETS # EVAL_INPLAY_ASSETS # INPLAY_ASSETS
+        self.eval_inplay_assets =  EVAL_INPLAY_ASSETS # EVAL_INPLAY_ASSETS # INPLAY_ASSETS
 
-        # self.block_contact_buf = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.bool, requires_grad=False)
-        # self.block_contact_ctr = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.int, requires_grad=False) + self.contact_memory_time + 1
-
-        self.inplay_assets = [
-        {
-            'name': ['fixed_asset_1', 'fixed_asset_2', 'movable_asset_1'],
-            'size': [[0.5, 0.8, 0.5], [0.3, 0.4, 0.3], [0.25, 0.9, 0.5]],
-            'pos': [[1.5, 0.5, 0.25], [2.25, -0.15, 0.25], [1.5, -0.4, 0.25]],
-            'density': [10000, 10000, 3]
-        },
-        {
-            'name': ['fixed_asset_3', 'fixed_asset_4', 'movable_asset_2'],
-            'size': [[0.5, 0.8, 0.5], [0.3, 0.4, 0.3], [0.25, 0.9, 0.5]],
-            'pos': [[1.5, 0.5, 0.25], [2.25, -0.6, 0.25], [1.5, -0.4, 0.25]],
-            'density': [10000, 10000, 3]
-        },
-        
-        # {
-        #     'name': ['fixed_asset_5',  'movable_asset_3'],
-        #     'size': [[0.5, 0.8, 0.5], [0.25, 0.9, 0.5]],
-        #     'pos': [[1.5, 0.5, 0.25], [1.3, -0.4, 0.25]],
-        #     'density': [10000, 3]
-        # },
-
-        {
-            'name': ['fixed_asset_6', 'fixed_asset_7', 'movable_asset_4'],
-            'size': [[0.5, 0.8, 0.5], [0.3, 0.4, 0.3], [0.25, 0.9, 0.5]],
-            'pos': [[1.5, -0.5, 0.25], [2.25, 0.15, 0.25], [1.5, 0.4, 0.25]],
-            'density': [10000, 10000, 3]
-        },
-        {
-            'name': ['fixed_asset_8', 'fixed_asset_9', 'movable_asset_5'],
-            'size': [[0.5, 0.8, 0.5], [0.3, 0.4, 0.3], [0.25, 0.9, 0.5]],
-            'pos': [[1.5, -0.5, 0.25], [2.25, 0.6, 0.25], [1.5, 0.4, 0.25]],
-            'density': [10000, 10000, 3]
-        },
-        
-        # {
-        #     'name': ['fixed_asset_10',  'movable_asset_6'],
-        #     'size': [[0.5, 0.8, 0.5], [0.25, 0.9, 0.5]],
-        #     'pos': [[1.5, -0.5, 0.25], [1.3, 0.4, 0.25]],
-        #     'density': [10000, 3]
-        # },
-
-        # {
-        #     'name': ['fixed_asset_6', 'fixed_asset_7', 'movable_asset_4'],
-        #     'size': [[0.5, 0.8, 0.5], [0.5, 0.6, 0.3], [0.25, 0.9, 0.5]],
-        #     'pos': [[0.8, 0.5, 0.25], [2., -0.4, 0.25], [1.5, -0.4, 0.25]],
-        #     'density': [10000, 10000, 5]
-        # },
-        {
-            'name': ['fixed_block', 'movable_block'],
-            'size': [[round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3], [round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.size_y_range), 2), 0.4]],
-            'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]],
-            'density': [10000, 3]
-        },
-        # {
-        #     'name': ['movable_block_1'],
-        #     'size': [[round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.size_y_range), 2), 0.4]],
-        #     'pos': [[round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]],
-        #     'density': [3]
-        # },
-        # {
-        #     'name': ['fixed_block_test'],
-        #     'size': [[round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3]],
-        #     'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15]],
-        #     'density': [10000]
-        # }
-        ]
-
+        self.all_inplay_assets = [*self.inplay_assets, *self.eval_inplay_assets]
         self.inplay = {}
+
+
+        self.train_eval_assets = {}
 
         self.base_assets = []
         self.asset_counts = 0
@@ -135,12 +69,20 @@ class WorldAsset():
         for i in self.inplay_assets:
             self.asset_counts += len(i['name'])
             for j in i['name']:
+                # print(j)
+                self.train_eval_assets[j] = False
                 self.asset_idx_map[j] = idx_ctr
                 self.idx_asset_map[idx_ctr] = j
                 idx_ctr += 1
-                for k in range(self.num_envs):
-                    self.env_assetname_map[k][j] = []
-                    self.env_assetname_bool_map[k][j] = False
+    
+        for i in self.eval_inplay_assets:
+            self.asset_counts += len(i['name'])
+            for j in i['name']:
+                # print(j)
+                self.train_eval_assets[j] = True
+                self.asset_idx_map[j] = idx_ctr
+                self.idx_asset_map[idx_ctr] = j
+                idx_ctr += 1
         
 
         self.block_size = torch.zeros((self.num_envs, self.asset_counts, 2), device=self.device, dtype=torch.float, requires_grad=False)
@@ -153,7 +95,6 @@ class WorldAsset():
         self.fixed_block_contact_ctr = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.int, requires_grad=False) + self.contact_memory_time + 1
 
         self.obs = torch.zeros((self.num_envs, 24), device=self.device, dtype=torch.bool, requires_grad=False)
-
 
         asset_options = gymapi.AssetOptions()
         asset_options.disable_gravity = False
@@ -171,42 +112,21 @@ class WorldAsset():
 
         self.base_assets = [AssetDef(asset, name, pos) for asset, name, pos in zip(gym_assets, asset_names, asset_pos)]
 
-        self.env_asset_ctr = torch.arange(0, 8, dtype=torch.long, device=self.device).repeat(self.num_envs, 1)
-        self.env_asset_bool = torch.zeros(self.num_envs, self.asset_counts, dtype=torch.bool, device=self.device)
-        self.all_env_ids = torch.arange(0, self.num_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
+        self.env_asset_ctr = torch.arange(0, 9, dtype=torch.long, device=self.device).repeat(self.num_envs, 1)
+        self.env_asset_bool = torch.zeros(self.num_envs, self.asset_counts, 1, dtype=torch.bool, device=self.device)
+        self.all_train_ids = torch.arange(0, self.num_train_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
+        self.all_eval_ids = torch.arange(self.num_train_envs, self.num_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
 
     def define_world(self, env_id):
         """
         define the world configuration and it's assets
         """
-        # all assets 
-        # gym_assets = [self.gym.create_box(self.sim, 6., 6., .01, gymapi.AssetOptions()), \
-        #     self.gym.create_box(self.sim, 1., .2, 1., gymapi.AssetOptions()), \
-        #     self.gym.create_box(self.sim, 1., .2, 1., gymapi.AssetOptions()), \
-        #     self.gym.create_box(self.sim, 0.2, 1., 1., gymapi.AssetOptions()), \
-        #     self.gym.create_box(self.sim, 0.2, 1., 1., gymapi.AssetOptions()), \
-        #         ]
-
         
-
-        
-
-        # self.inplay_assets = {
-        #     'name': ['fixed_asset_1', 'fixed_asset_2', 'movable_asset_1'],
-        #     'size': [[0.5, 0.8, 0.5], [0.3, 0.4, 0.3], [0.25, 0.9, 0.5]],
-        #     'pos': [[1.5, 0.5, 0.25], [2.0, -0.2, 0.25], [1.5, -0.4, 0.25]],
-        #     'density': [1000, 1000, 5]
-        # }
-
-        # self.inplay_assets = {
-        #     'name': ['fixed_block', 'movable_block'],
-        #     'size': [[round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3], [round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.size_y_range), 2), 0.4]],
-        #     'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]],
-        #     'density': [1000, 5]
-        # }
         assets_container = []
 
-        for i in self.inplay_assets:
+        assets_inplay = self.inplay_assets if env_id < self.num_train_envs else self.eval_inplay_assets
+
+        for i in assets_inplay:
             gym_assets = []
             asset_names = []
             asset_pos = []
@@ -217,54 +137,16 @@ class WorldAsset():
                 asset_options.fix_base_link = False
                 asset_options.density = i['density'][idx]
 
-                gym_assets.append(self.gym.create_box(self.sim, *(i['size'][idx]), asset_options))
+                sizes = [j() for j in i['size'][idx]]
+
+                gym_assets.append(self.gym.create_box(self.sim, *sizes, asset_options))
                 
-                self.block_size[env_id, self.asset_idx_map[name], :] = torch.tensor(i['size'][idx][:2])
+                self.block_size[env_id, self.asset_idx_map[name], :] = torch.tensor(sizes[:2])
                 
                 asset_names.append(i['name'][idx])
                 asset_pos.append(i['pos'][idx])
             assets_container.append([AssetDef(asset, name, pos) for asset, name, pos in zip(gym_assets, asset_names, asset_pos)])
-        
 
-        # for idx in range(len(self.inplay_assets['name'])):
-        #     asset_options = gymapi.AssetOptions()
-        #     asset_options.disable_gravity = False
-        #     asset_options.fix_base_link = False
-        #     asset_options.density = self.inplay_assets['density'][idx]
-            
-        #     gym_assets.append(self.gym.create_box(self.sim, *(self.inplay_assets['size'][idx]), asset_options))
-        #     self.block_size[env_id, idx, :] = torch.tensor(self.inplay_assets['size'][idx][:2])
-        #     asset_names.append(self.inplay_assets['name'][idx])
-        #     asset_pos.append(self.inplay_assets['pos'][idx])
-
-
-        # custom box
-        # if self.custom_box:
-        #     asset_options = gymapi.AssetOptions()
-        #     asset_options.disable_gravity = False
-        #     asset_options.fix_base_link = False
-        #     asset_options.density = 10000
-        #     asset_size = [round(np.random.uniform(*world_cfg.fixed_block.size_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.size_y_range), 2), 0.3]
-        #     gym_assets.append(self.gym.create_box(self.sim, *asset_size, asset_options))
-        #     asset_names.append(world_cfg.fixed_block.name)
-        #     asset_pos.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15])
-        #     self.fixed_block_size[env_id, :] = torch.tensor(asset_size[:2])
-            
-        #     asset_options = gymapi.AssetOptions()
-        #     asset_options.disable_gravity = False
-        #     asset_options.fix_base_link = False
-        #     block_density = np.random.uniform(*world_cfg.movable_block.block_density_range)
-        #     asset_options.density = block_density
-
-        #     asset_size = [round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.size_y_range), 2), 0.4]
-        #     # if np.random.uniform(0, 1) < 0.1:
-        #     #     asset_size[1] = round(np.random.uniform(*[0.8, 1.3]), 2)
-
-        #     self.block_size[env_id, :] = torch.tensor(asset_size[:2])
-        #     self.block_weight[env_id, 0] = (block_density * np.prod(asset_size))
-        #     gym_assets.append(self.gym.create_box(self.sim, asset_size[0], asset_size[1], asset_size[2], asset_options))
-        #     asset_names.append(world_cfg.movable_block.name)
-        #     asset_pos.append([round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2])
         return assets_container
 
     def add_variables(self, **kwargs):
@@ -275,9 +157,6 @@ class WorldAsset():
         """
         environment setup, all the actors of the world get created here
         """
-
-        
-        
         if env_id not in self.handles:
             self.handles[env_id] = []
 
@@ -286,7 +165,6 @@ class WorldAsset():
             pos = env_origin.clone(); pos[0] += asset.base_position[0]; pos[1] += asset.base_position[1]; pos[2] += asset.base_position[2]
             pose.p = gymapi.Vec3(*pos)
             ah = self.gym.create_actor(env_handle, asset.asset, pose, asset.name, env_id, 0, 0)
-            # self.handles[env_id].append(ah)
 
         assets_container = self.define_world(env_id)
         self.env_assets_map[env_id] = assets_container
@@ -313,9 +191,15 @@ class WorldAsset():
         self.env_origins = env_origins
 
         for name in self.asset_idx_map.keys():
-            self.asset_root_ids[name] = torch.tensor([self.gym.find_actor_index(self.envs[i], name, gymapi.DOMAIN_SIM) for i in range(self.num_envs)], dtype=torch.long, device=self.device)
-            block_actor_handles = [self.gym.find_actor_handle(self.envs[i], name) for i in range(self.num_envs)]            
-            self.asset_contact_ids[name] = torch.tensor([self.gym.find_actor_rigid_body_index(i, j, "box", gymapi.DOMAIN_SIM) for i, j in zip(self.envs, block_actor_handles)], dtype=torch.long, device=self.device)
+            if not self.train_eval_assets[name]:
+                self.asset_root_ids[name] = torch.tensor([self.gym.find_actor_index(self.envs[i], name, gymapi.DOMAIN_SIM) for i in range(self.num_train_envs)], dtype=torch.long, device=self.device)
+                block_actor_handles = [self.gym.find_actor_handle(self.envs[i], name) for i in range(self.num_train_envs)]            
+                self.asset_contact_ids[name] = torch.tensor([self.gym.find_actor_rigid_body_index(i, j, "box", gymapi.DOMAIN_SIM) for i, j in zip(self.envs[:self.num_train_envs], block_actor_handles)], dtype=torch.long, device=self.device)
+            else:
+                self.asset_root_ids[name] = torch.tensor([self.gym.find_actor_index(self.envs[i], name, gymapi.DOMAIN_SIM) for i in range(self.num_train_envs, self.num_envs)], dtype=torch.long, device=self.device)
+                block_actor_handles = [self.gym.find_actor_handle(self.envs[i], name) for i in range(self.num_train_envs, self.num_envs)]            
+                self.asset_contact_ids[name] = torch.tensor([self.gym.find_actor_rigid_body_index(i, j, "box", gymapi.DOMAIN_SIM) for i, j in zip(self.envs[self.num_train_envs:self.num_envs], block_actor_handles)], dtype=torch.long, device=self.device)
+
      
     def init_buffers(self, **kwargs):
         """
@@ -337,63 +221,145 @@ class WorldAsset():
         base_positions = []
         env_origins = []
         env_asset_bool = []
-        self.env_asset_bool[env_ids, :] = False
+        self.env_asset_bool[env_ids, :, :] = False
 
         for env_id in env_ids:
-            
             env_id = env_id.item()
             env_handle = self.envs[env_id]
             assets_container = self.env_assets_map[env_id]
             random_idx = np.random.choice(np.arange(0, len(assets_container)))
-            asset_bool = [False]*self.asset_counts
-            # print(random_idx)
             self.inplay[env_id] = random_idx
-            away_indices = []
             in_indices = []
+            assets_marked = []
+
             for idx, asset_container in enumerate(assets_container):
+                mv_size = None
+                movable_bp = None
+                movable_asset_name = None 
+                fixed_bp = None
+                fb_three_bool = [False, False, False]
+                bb_three_bool = [False, False, False]
+                
+
                 for asset in asset_container:
                     actor_indices.append(self.gym.find_actor_index(env_handle, asset.name, gymapi.DOMAIN_SIM))
                     env_origins.append(self.env_origins[env_id])
+                    assets_marked.append(asset.name)
+                    
                     if idx == random_idx:
-                        # asset_bool[self.asset_idx_map[asset.name]] = True
+                        
                         in_indices.append((actor_indices[-1], asset.name, env_id))
 
-                        self.env_asset_bool[env_id, self.asset_idx_map[asset.name]] = True
-                        if asset.name == world_cfg.movable_block.name:
-                            base_positions.append([round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2])
+
+                        if asset.name.startswith('fb_three_mov'):
+                            if fixed_bp is not None:
+                                raise "should do movable first"
+                            mv_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
+                            mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
+
+                            mv_y_range = (1.9 - mv_size_y)/2
+
+                            movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
+
+                            movable_asset_name = asset.name
+                            mv_size = (mv_size_x, mv_size_y)
+
+                            base_positions.append(movable_bp)
+                            fb_three_bool[0] = True
+
+                        elif asset.name.startswith('fb_three_fix'):
+                            
+                            mv_x, mv_y, _ = movable_bp
+                            mv_size_x, mv_size_y = mv_size
+                            fx_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
+                            fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
+
+                            if not fb_three_bool[1]:
+                                fx_y_range = (1.9 - fx_size_y)/2
+                                fixed_bp = [mv_x-mv_size_x/2-fx_size_x/2-np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fb_three_bool[1] = True
+
+
+                            elif fb_three_bool[1] and not fb_three_bool[2]:
+                                fx_y_range = (1.9 - fx_size_y)/2
+                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fb_three_bool[2] = True
+
+                            base_positions.append(fixed_bp)
+
+                        elif asset.name.startswith('bb_three_mov'):
+                            if fixed_bp is not None:
+                                raise "should do movable first"
+                            mv_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
+                            mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
+
+                            mv_y_range = (1.9 - mv_size_y)/2
+
+                            movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
+
+                            movable_asset_name = asset.name
+                            mv_size = (mv_size_x, mv_size_y)
+
+                            base_positions.append(movable_bp)
+                            bb_three_bool[0] = True
+                        
+                        elif asset.name.startswith('bb_three_fix'):
+                            
+                            mv_x, mv_y, _ = movable_bp
+                            mv_size_x, mv_size_y = mv_size
+                            fx_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
+                            fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
+
+                            if not bb_three_bool[1]:
+                                fx_y_range = (1.9 - fx_size_y)/2
+                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                bb_three_bool[1] = True
+
+                            elif bb_three_bool[1] and not bb_three_bool[2]:
+                                bb_offset = fixed_bp[0]
+                                fx_y_range = (1.9 - fx_size_y)/2
+                                fixed_bp = [mv_x+bb_offset/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                bb_three_bool[2] = True
+
+
+                            base_positions.append(fixed_bp)
+
+                        elif asset.name == world_cfg.movable_block.name or asset.name.startswith('movable_block'):
+                            if fixed_bp is not None:
+                                raise "should do movable first"
+                                exit()
+
+                            mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
+                            mv_y_range = (1.9 - mv_size_y)/2
+                            
+                            movable_bp = [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
+                            movable_asset_name = asset.name
+
+                            base_positions.append(movable_bp)
 
                         elif asset.name == world_cfg.fixed_block.name or asset.name.startswith('fixed_block'):
-                            # if np.random.uniform(0, 1) < 0.6:
-                            #     base_positions.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(-0.4, 0.4), 2), 0.2])
-                            # else:
-                            base_positions.append([round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), 0.2])
-                        # elif asset.name == 'wall_front':
-                        #     if np.random.uniform(0, 1) > 0.5:
-                        #         base_positions.append([3.2, -0.35, .5])
-                        #     else:
-                        #         base_positions.append([3.2, 0.35, .5])
-                            # print(asset.name, asset.base_position, base_positions[-1])
+                            fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
+                            fx_y_range = (1.9 - fx_size_y)/2
+                            if movable_bp is not None:
+                                mv_x, mv_y, _ = movable_bp
+                                mv_size_x = self.block_size[env_id, self.asset_idx_map[movable_asset_name], 0]
+                                fx_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
+                                
+                                # print(movable_bp[0], mv_size_x)
+                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                            else:
+                                fixed_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                            base_positions.append(fixed_bp)
+                        
                         else:
                             base_positions.append(asset.base_position)
+
                     else:
-                        # asset_bool[self.asset_idx_map[asset.name]] = False
-                        self.env_asset_bool[env_id, self.asset_idx_map[asset.name]] = False
                         base_positions.append([bp - 100000.0 for bp in asset.base_position])
-                        away_indices.append((actor_indices[-1], env_id, self.asset_idx_map[asset.name]))
-
-            # env_asset_bool.append(asset_bool)
-                    
-        # self.env_asset_bool[env_ids, :] = torch.tensor(env_asset_bool, dtype=torch.bool, device=self.device)
-        # print('here', self.env_asset_bool[0])
-        # self.env_asset_ctr[env_ids, :] = torch.arange(0, 8, dtype=torch.long, device=self.device)
-
-        
-        
+            
         actor_indices = torch.tensor(actor_indices, dtype=torch.long, device='cuda:0')
-        in_indices_t = torch.tensor([i for i, _, _ in in_indices], dtype=torch.long, device='cuda:0')
-        in_env_ids = torch.tensor([i for _, _, i in in_indices], dtype=torch.long, device='cuda:0')
-        in_asset_names = [i for _, i, _ in in_indices]
         base_positions = torch.tensor(base_positions, dtype=torch.float32, device='cuda:0')
+
         
         env_origins = torch.vstack(env_origins)
         self.all_root_states[actor_indices, :3] = base_positions + env_origins
@@ -402,68 +368,155 @@ class WorldAsset():
         self.block_contact_buf[env_ids, :, :] = False
         self.block_contact_ctr[env_ids, :, :] = self.contact_memory_time + 1
 
-        for aw_id, aw_env, aw_name in zip(in_indices_t, in_env_ids, in_asset_names):
-            # print(self.all_root_states[aw_id])
-            if (torch.linalg.norm(self.all_root_states[aw_id, :2]).item() > 1000):
-                print("##########")
-                print(aw_name, aw_env, self.env_asset_bool[aw_env][aw_name])
-                print("##########")
-        
-
-
-        # self.fixed_block_contact_buf[:] = False
-        # self.fixed_block_contact_ctr[:] = self.contact_memory_time + 1
-
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.all_root_states), gymtorch.unwrap_tensor(actor_indices.to(dtype=torch.int32)), len(actor_indices))
 
     def get_block_obs(self):
 
-        # start = time.time()
         ids = []
         block_actor_handles = []
         ids_contact = []
-        all_obs = torch.zeros((self.num_envs, 8*4), dtype=torch.float, device=self.device)
-        self.env_asset_ctr[:, :] = torch.arange(0, 8, dtype=torch.long, device=self.device)
+        all_obs = torch.zeros((self.num_envs, 9*4), dtype=torch.float, device=self.device)
+        self.env_asset_ctr[:, :] = torch.arange(0, 9, dtype=torch.long, device=self.device)
 
         for _, name in enumerate(self.asset_idx_map.keys()):
+            
+            curr_env_ids = self.all_train_ids.view(-1)
+            if self.train_eval_assets[name]:
+                curr_env_ids = self.all_eval_ids.view(-1)
+                # print(curr_env_ids)
+            
             ids = self.asset_root_ids[name]
             # print(name, ids)
             ids_contact = self.asset_contact_ids[name]
 
+            movable_indicator = 0
+            if 'mov' in name:
+                print(name)
+                movable_indicator = 1
+            # print('here 4', self.all_contact_forces[ids_contact, :2])
+            # print(self.all_root_states[ids, 0])
+            self.env_asset_bool[curr_env_ids, self.asset_idx_map[name], :] = ~(self.all_root_states[ids, 0] < -100).view(-1, 1)
 
-            self.env_asset_bool[:, self.asset_idx_map[name]] = ~(self.all_root_states[ids, 0] < -100)
+            # print('here 3', self.all_contact_forces[ids_contact, :2])
+
+            # print(name, self.env_asset_ctr[curr_env_ids, 0], self.env_asset_ctr, self.env_asset_bool[:, self.asset_idx_map[name]])
+            # print(self.env_asset_ctr[curr_env_ids.view(-1, 1), :1])
+            # all_obs[curr_env_ids, self.env_asset_ctr[curr_env_ids.view(-1, 1), :1]] = movable_indicator
+            # print(all_obs[curr_env_ids[1], self.env_asset_ctr[curr_env_ids, 0][1]])
             
-            all_obs[self.all_env_ids, self.env_asset_ctr] += (torch.cat([(self.all_root_states[ids, :2] - self.env_origins[:, :2]).clone(), self.all_root_states[ids, 3:7].clone(), self.block_size[:, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[:, self.asset_idx_map[name]].view(-1, 1))
+            # print(self.env_asset_ctr[:, 0], all_obs[1, self.env_asset_ctr[curr_env_ids, 0]])
+            # print('here 2', self.all_contact_forces[ids_contact, :2])
+            # if self.train_eval_assets[name] and self.env_asset_bool[curr_env_ids[0], self.asset_idx_map[name]]:
+            #     # print(name, self.block_contact_buf[curr_env_ids[0], self.asset_idx_map[name], :], curr_env_ids[0])
+            #     # print(ids, ids_contact)
+            #     # print(block_contact_buf)
+            #     # print(self.block_contact_ctr[0, self.asset_idx_map[name], :])
+            #     # print(self.block_contact_buf[0, self.asset_idx_map[name], :])
+            #     print(self.env_asset_ctr[curr_env_ids.view(-1, 1)[0], 1:])
 
 
-            # all_obs[all_obs[self.all_env_ids, self.env_asset_ctr] < -100] = 0.
+            
+            
+            # print(all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]].shape, (torch.cat([torch.tensor([movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), self.all_root_states[ids, 3:7].clone(), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]]).shape)
 
-            # tester = torch.linalg.norm(all_obs[self.all_env_ids, self.env_asset_ctr[:, :2]], dim=-1)
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] += (torch.cat([torch.tensor([movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), self.all_root_states[ids, 3:7].clone(), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
+
+            # if torch.linalg.norm(all_obs[self.all_eval_ids.view(-1, 1)[0], -8:]) > 0:
+            #     print(name, self.env_asset_ctr[self.all_eval_ids.view(-1, 1)[0], 1:])
+            
+            if self.train_eval_assets[name] and self.env_asset_bool[curr_env_ids[0], self.asset_idx_map[name]]:
+                # print(all_obs[curr_env_ids.view(-1, 1)[0]])
+                if torch.linalg.norm(all_obs[curr_env_ids.view(-1, 1)[0], -8:]) > 0:
+                    print(self.all_train_ids, self.all_eval_ids)
+                    quit()
+            
+                
+            # if self.train_eval_assets[name] and self.env_asset_bool[curr_env_ids[0], self.asset_idx_map[name]]:
+            #     print('here', name)
+            #     print(all_obs[curr_env_ids[0], :])
+
+
+            # all_obs[all_obs[curr_env_ids, self.env_asset_ctr] < -100] = 0.
+
+            # tester = torch.linalg.norm(all_obs[curr_env_ids, self.env_asset_ctr[:, :2]], dim=-1)
             # tester_mask = tester!=0
             # tester_mean = (tester*tester_mask).sum(dim=0)/tester_mask.sum(dim=0)
             # if torch.abs(tester_mean) > 100:
             #     try:
             #         print("###########################################################################")
-            #         fake_env_ids = self.all_env_ids[torch.linalg.norm(all_obs[self.all_env_ids, self.env_asset_ctr[:, :2]], dim=-1) > 100]
+            #         fake_env_ids = curr_env_ids[torch.linalg.norm(all_obs[curr_env_ids, self.env_asset_ctr[:, :2]], dim=-1) > 100]
             #         print(name, self.env_asset_bool[fake_env_ids])
             #         print(fake_env_ids, all_obs[fake_env_ids[0], :2])
             #         print("###########################################################################")
             #     except:
             #         pass
 
-            # envss = ((all_obs[self.all_env_ids, self.env_asset_ctr[0]] < -10)[:2]).nonzero(as_tuple=True)[0]
+            # envss = ((all_obs[curr_env_ids, self.env_asset_ctr[0]] < -10)[:2]).nonzero(as_tuple=True)[0]
             # # print(envss)
             # if len(envss) > 0:
             #     print(self.env_asset_bool[envss, self.asset_idx_map[name]])
 
+            # print(self.all_contact_forces[ids_contact, :2])
+            # print(self.block_contact_buf.shape)
             block_contact_buf = (torch.linalg.norm(self.all_contact_forces[ids_contact, :2], dim=-1) > 1.).view(-1, 1)
-            self.block_contact_ctr[:, self.asset_idx_map[name], :] = (~block_contact_buf) * self.block_contact_ctr[:, self.asset_idx_map[name], :]
-            self.block_contact_buf[:, self.asset_idx_map[name], :] = self.block_contact_ctr[:, self.asset_idx_map[name], :] < self.contact_memory_time
-            self.block_contact_ctr[:, self.asset_idx_map[name], :][self.block_contact_ctr[:, self.asset_idx_map[name]] < self.contact_memory_time] += 1
+            
+            # print('hereeee', block_contact_buf)
+            # print(block_contact_buf)
+            # print('done b', self.block_contact_ctr, block_contact_buf, self.asset_idx_map[name])
+            self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] = (~block_contact_buf) * self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :]
 
-            all_obs[self.all_env_ids, self.env_asset_ctr] *= self.block_contact_buf[:, self.asset_idx_map[name], :]
-            self.env_asset_ctr += 8*(self.env_asset_bool[:, self.asset_idx_map[name]].view(-1, 1).int())
-        
+            # if not self.train_eval_assets[name] and self.env_asset_bool[0, self.asset_idx_map[name]]:
+            #     print(self.block_contact_ctr[0, self.asset_idx_map[name], :])
+
+            # print('done', self.block_contact_ctr)
+            self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :] = self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] < self.contact_memory_time
+            # print('hereeeee', self.block_contact_ctr.shape, self.asset_idx_map[name])
+            # print(self.block_contact_ctr)
+            # if not self.train_eval_assets[name] and self.env_asset_bool[0, self.asset_idx_map[name]]:
+            #     # print(self.block_contact_ctr[0, self.asset_idx_map[name], :])
+            #     # print(self.block_contact_buf[0, self.asset_idx_map[name], :])
+            #     print(self.block_contact_ctr[0, self.asset_idx_map[name]] < self.contact_memory_time)
+
+            self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] += (1*self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
+            
+
+            # if not self.train_eval_assets[name] and self.env_asset_bool[0, self.asset_idx_map[name]]:
+            #     print(self.block_contact_ctr[0, self.asset_idx_map[name], :])
+            
+            # print(all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]].shape, self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :].shape)
+            # print(self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
+            
+
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] *= self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :] 
+
+            # if name == "movable_block_1" and not self.train_eval_assets[name] and self.env_asset_bool[0, self.asset_idx_map["movable_block_1"]]:
+            #     print(block_contact_buf)
+            #     # print(self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
+            #     print(all_obs[0, :])
+            # if self.train_eval_assets[name] and self.env_asset_bool[curr_env_ids[0], self.asset_idx_map[name]]:
+            #     # print(name, self.block_contact_buf[curr_env_ids[0], self.asset_idx_map[name], :], curr_env_ids[0])
+            #     # print(ids, ids_contact)
+            #     # print(block_contact_buf)
+            #     # print(self.block_contact_ctr[0, self.asset_idx_map[name], :])
+            #     # print(self.block_contact_buf[0, self.asset_idx_map[name], :])
+            #     print(all_obs[curr_env_ids[0], :])
+            #     print(self.env_asset_ctr[curr_env_ids[0], :])
+                
+
+                # print(all_obs[0, :].shape)
+            # print(all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]])
+
+            # print('done a', self.block_contact_ctr)
+
+
+            # if 'mov' in name:
+            #     print('ehere', self.env_asset_ctr[curr_env_ids, 0][1], all_obs[curr_env_ids[1], self.env_asset_ctr[curr_env_ids, 0][1]])
+
+            self.env_asset_ctr[curr_env_ids, :] += 9*(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1))
+
+        print(all_obs[0, :])
+        # 
+            # print('done bb', self.block_contact_ctr)
         return all_obs
 
         for env_id in range(self.num_envs):

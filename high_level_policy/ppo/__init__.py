@@ -59,10 +59,10 @@ class RunnerArgs(PrefixProto, cli=False):
     max_iterations = 1500  # number of policy updates
 
     # logging
-    save_interval = 400  # check for potential saves every this many iterations
-    save_video_interval = 100
+    save_interval = 200  # check for potential saves every this many iterations
+    save_video_interval = 60
     save_anim_interval = 3
-    log_freq = 10
+    log_freq = 50
     start_save_plot = 0
     save_plot_interval = 125
     # load and resume
@@ -139,11 +139,13 @@ class Runner:
         lenbuffer_eval = deque(maxlen=200)
         patches = []
         patches_eval = []
-        self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
+        self.random_anim_env = np.random.choice(np.arange(0, self.num_train_envs))
+        # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
         self.num_patches = 0
         save_video_anim = False
         save_video_anim_eval = False
-        complete_student = 2500
+        complete_student = STUDENT_ENCODING
+        complete_student_ctr = 0 
 
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
@@ -159,6 +161,8 @@ class Runner:
             # Rollout
             # if self.current_learning_iteration+it % 5 == 0:
                 # eval_expert = True
+
+            
             
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
@@ -171,7 +175,7 @@ class Runner:
 
                     
                     ### main policy calls
-                    priv_train_pred, actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs], student=(it > complete_student))
+                    (priv_train_pred, latent_enc), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs], student=(it > complete_student))
                     
                     if eval_expert:
                         priv_obs_pred, actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:],
@@ -180,7 +184,7 @@ class Runner:
                         priv_obs_pred, actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:],
                                                                         obs_history[num_train_envs:])
 
-                    ## 
+                    ##  
                     
                     if USE_LATENT:
                         if it >= 0:
@@ -190,117 +194,75 @@ class Runner:
                             patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
                             patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
                             
-                            for i in range(3):
-                                j = i*8
-                                pos, pos_pred = privileged_obs[num_train_envs][j:j+2], priv_obs_pred[self.random_anim_env][j:j+2]
-                                rot, rot_pred = privileged_obs[num_train_envs][j+2:j+6], priv_obs_pred[self.random_anim_env][j+2:j+6]
-                                size, size_pred = privileged_obs[num_train_envs][j+6:j+8], priv_obs_pred[self.random_anim_env][j+6:j+8]
+                            for i in range(4):
+                                j = i*9 + 1
+                                
+                                pos, pos_pred = privileged_obs[num_train_envs][j:j+2], priv_obs_pred[0][j:j+2]
+                                rot, rot_pred = privileged_obs[num_train_envs][j+2:j+6], priv_obs_pred[0][j+2:j+6]
+                                size, size_pred = privileged_obs[num_train_envs][j+6:j+8], priv_obs_pred[0][j+6:j+8]
 
                                 angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
                                 angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
+                                block_color = 'red'
+                                # print(j-1, privileged_obs[num_train_envs][j-1])
+                                if privileged_obs[num_train_envs][j-1] == 1:
+                                    block_color = 'yellow'
+                                
+                                pred_block_color = 'blue'
+                                if priv_obs_pred[0][j-1] > 0.8:
+                                    pred_block_color = 'orange'
 
-                                patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor='red', label=f'true_mov_{i}'))
-                                patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label=f'pred_mov_{i}'))
+                                patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
+                                patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
                                 # patch_set.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
                                 # patch_set.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))              
 
-                                patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor='red', label=f'true_mov_{i}'))
-                                patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label=f'pred_mov_{i}'))
+                                patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
+                                patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
 
                                 # patch_set.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
                                 # patch_set.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))
                             
                             patches.append(patch_set)
 
-                            
 
-                            # pos, pos_pred = privileged_obs[self.random_anim_env][:2], priv_train_pred[self.random_anim_env][:2]
-                            # rot, rot_pred = privileged_obs[self.random_anim_env][2:6], priv_train_pred[self.random_anim_env][2:6]
-                            # size, size_pred = privileged_obs[self.random_anim_env][6:8], priv_train_pred[self.random_anim_env][6:8]
-                            # # weight, weight_pred = privileged_obs[self.random_anim_env][8], priv_train_pred[self.random_anim_env][8]
+                            patch_set_eval = []
 
-                            # fpos, fpos_pred = privileged_obs[self.random_anim_env][8:10], priv_train_pred[self.random_anim_env][8:10]
-                            # fsize, fsize_pred = privileged_obs[self.random_anim_env][14:], priv_train_pred[self.random_anim_env][14:]
-
-                            # angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
-                            # angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
-                            
-                            # patch_set = []
-
-                            # patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            # patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            # patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-
-                            # patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor='red', label='true_mov'))
-                            # patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label='pred_mov'))
-                            # patch_set.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                            # patch_set.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))
-
-                            # patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor='red', label='true_mov'))
-                            # patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label='pred_mov'))
-
-                            # patch_set.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                            # patch_set.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))
-                            # # patch_set.append(weight)
-                            # # patch_set.append(weight_pred)
-                            # patches.append(patch_set) 
-                        
-                        
-                        # if it >= 0:
-                        #     # patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                        #     # patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                        #     # patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                            patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                            patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                            patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
 
 
-                        #     pos_eval, pos_pred_eval = privileged_obs[num_train_envs][:2], priv_obs_pred[self.random_anim_env][:2]
-                        #     rot_eval, rot_pred_eval = privileged_obs[num_train_envs][2:6], priv_obs_pred[self.random_anim_env][2:6]
-                        #     size_eval, size_pred_eval = privileged_obs[num_train_envs][6:8], priv_obs_pred[self.random_anim_env][6:8]
-                        #     # weight_eval, weight_pred_eval = privileged_obs[num_train_envs][8], priv_train_pred[self.random_anim_env][8]
+                            for i in range(4):
+                                j = i*9 + 1
 
-                        #     fpos_eval, fpos_pred_eval = privileged_obs[num_train_envs][8:11], priv_obs_pred[self.random_anim_env][9:11]
-                        #     fsize_eval, fsize_pred_eval = privileged_obs[num_train_envs][11:], priv_obs_pred[self.random_anim_env][11:]
-
-                        #     angle_eval = torch.rad2deg(torch.atan2(2.0*(rot_eval[0]*rot_eval[1] + rot_eval[3]*rot_eval[2]), 1. - 2.*(rot_eval[1]*rot_eval[1] + rot_eval[2]*rot_eval[2])))
-                        #     angle_pred_eval = torch.rad2deg(torch.atan2(2.0*(rot_pred_eval[0]*rot_pred_eval[1] + rot_pred_eval[3]*rot_pred_eval[2]), 1. - 2.*(rot_pred_eval[1]*rot_pred_eval[1] + rot_pred_eval[2]*rot_pred_eval[2])))
+                                pos, pos_pred = privileged_obs[self.random_anim_env][j:j+2], priv_train_pred[self.random_anim_env][j:j+2]
+                                rot, rot_pred = privileged_obs[self.random_anim_env][j+2:j+6], priv_train_pred[self.random_anim_env][j+2:j+6]
+                                size, size_pred = privileged_obs[self.random_anim_env][j+6:j+8], priv_train_pred[self.random_anim_env][j+6:j+8]
+                                # print(rot_pred)
 
 
-                        #     patch_set_eval = []
+                                angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
+                                angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
-                        #     patch_set_eval.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                        #     patch_set_eval.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                        #     patch_set_eval.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                                block_color = 'red'
+                                # print(j-1, privileged_obs[0][j-1])
+                                if privileged_obs[self.random_anim_env][j-1] == 1:
+                                    block_color = 'yellow'
+                                
+                                pred_block_color = 'blue'
+                                if priv_obs_pred[self.random_anim_env][j-1] > 0.8:
+                                    pred_block_color = 'orange'
 
-                        #     patch_set_eval.append(pch.Rectangle(pos_eval.cpu() - size_eval.cpu()/2, *(size_eval.cpu()), angle=angle_eval.cpu(), rotation_point='center', facecolor='red', label='true_mov'))
-                        #     patch_set_eval.append(pch.Rectangle(pos_pred_eval.cpu() - size_pred_eval.cpu()/2, *(size_pred_eval.cpu()), angle=angle_pred_eval.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label='pred_mov'))
-                        #     patch_set_eval.append(pch.Rectangle(fpos_eval.cpu() - fsize_eval.cpu()/2, *(fsize_eval.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                        #     patch_set_eval.append(pch.Rectangle(fpos_pred_eval.cpu() - fsize_pred_eval.cpu()/2, *(fsize_pred_eval.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))
+                                patch_set_eval.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
+                                patch_set_eval.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
+                                # patch_set_eval.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
+                                # patch_set_eval.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))              
 
-                        #     patch_set_eval.append(pch.Rectangle(pos_eval.cpu() - size_eval.cpu()/2, *(size_eval.cpu()), angle=angle_eval.cpu(), rotation_point='center', facecolor='red', label='true_mov'))
-                        #     patch_set_eval.append(pch.Rectangle(pos_pred_eval.cpu() - size_pred_eval.cpu()/2, *(size_pred_eval.cpu()), angle=angle_pred_eval.cpu(), rotation_point='center', facecolor='blue', alpha=0.5, label='pred_mov'))
-
-                        #     patch_set_eval.append(pch.Rectangle(fpos_eval.cpu() - fsize_eval.cpu()/2, *(fsize_eval.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                        #     patch_set_eval.append(pch.Rectangle(fpos_pred_eval.cpu() - fsize_pred_eval.cpu()/2, *(fsize_pred_eval.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))
-
-                        #     # patch_set_eval.append(weight_eval)
-                        #     # patch_set_eval.append(weight_pred_eval)
-
-                        #     patches_eval.append(patch_set_eval)
-
-
-                    # patch_set_eval.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                    # patch_set_eval.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                    # patch_set_eval.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-
-                    # fig = plt.figure(figsize=(8,8))
-                    # ax = fig.gca()
-                    # ax.set(xlim=(-2, 4), ylim=(-1, 1))
-                    # ax.add_patch(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor='r', label='true_mov'))
-                    # ax.add_patch(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor='b', alpha=0.5, label='pred_mov'))
-                    # ax.add_patch(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=0.4, facecolor='brown', label='true_fixed'))
-                    # ax.add_patch(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.4, facecolor='black', label='pred_fixed'))
-                    # ax.legend(loc='best')
-                    
+                                patch_set_eval.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
+                                patch_set_eval.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
+                            patches_eval.append(patch_set_eval)
 
                     ######
                                             
@@ -308,13 +270,15 @@ class Runner:
 
                     obs_dict, rewards, dones, infos = ret
                     # print(dones[:5])
-                    if dones[num_train_envs]:
+                    if dones[0]:
                         save_video_anim = True
-                    # if dones[num_train_envs]:
-                    #     save_video_anim_eval = True
+                    if dones[num_train_envs]:
+                        save_video_anim_eval = True
 
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
+
+                    # print(obs_history)
 
                     obs, privileged_obs, obs_history, rewards, dones = obs.to(self.device), privileged_obs.to(
                         self.device), obs_history.to(self.device), rewards.to(self.device), dones.to(self.device)
@@ -371,7 +335,7 @@ class Runner:
                         cur_episode_length[new_ids_eval] = 0
 
                 # Learning step
-                self.alg.compute_returns(obs[:num_train_envs], privileged_obs[:num_train_envs], student=(it > complete_student), observation_history=obs_history[:num_train_envs])
+                self.alg.compute_returns(obs[:num_train_envs], privileged_obs[:num_train_envs], student=((it > complete_student)), observation_history=obs_history[:num_train_envs])
 
                 if it % eval_freq == 0:
                     self.env.reset_evaluation_envs()
@@ -383,7 +347,7 @@ class Runner:
                                     path=f"curriculum/info.pkl", append=True)
 
             
-            mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss = self.alg.update(student=(it > complete_student))
+            mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss = self.alg.update(student=((it > complete_student)))
 
             logger.store_metrics(
                 time_elapsed=logger.since('start'),
@@ -391,163 +355,37 @@ class Runner:
                 adaptation_loss=mean_adaptation_module_loss,
                 mean_value_loss=mean_value_loss,
                 mean_surrogate_loss=mean_surrogate_loss,
-                mean_reconstruction_loss=mean_reconstruction_loss
+                mean_reconstruction_loss=mean_reconstruction_loss,
+                mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss
             )
 
             if USE_LATENT:
 
-                if save_video_anim:
-                    if True or it >= save_at_iter:
-                        path = f'{HLP_ROOT_DIR}/tmp/legged_data'
-                        os.makedirs(path, exist_ok=True)
-
-                        # fig, ax = plt.subplots(1, 3, figsize=(24, 8))
-                        # last_patch = []
-                        # # true_weight = ax[0].text(-0.8, 0.9, f"true:")
-                        # # pred_weight = ax[0].text(-0.8, 0.8, f"predicted:")
-                        # # def init():
-                        # #     pass
-
-                        # def animate(frame):
-                        #     # for txt in fig.texts:
-                        #     #     txt.set_visible(False)
-                        #     if len(last_patch) != 0:
-                        #         for i in last_patch:
-                        #             try:
-                        #                 i.remove()
-                        #             except:
-                        #                 pass
-                        #         last_patch.clear()
-                            
-                        #     robot, robot_1, robot_2 = frame[0], frame[1], frame[2]
-
-                        #     # for pch in frame[3:]:
-                        #     #     j = pch
-                        #     ax[0].add_patch(robot)
-                        #     ax[1].add_patch(robot_1)
-                        #     ax[2].add_patch(robot_2)
-
-                        #     ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all')
-                        #     ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth')
-                        #     ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted')
-                            
-                        #     for i in range(3):
-                        #         j = i*4 + 3
-                        #         ax[0].add_patch(frame[j])
-                        #         ax[0].add_patch(frame[j+1])
-
-                        #         ax[1].add_patch(frame[j+2])
-                        #         ax[2].add_patch(frame[j+3])
-                                    
-                        #     # true_mov, pred_mov, true_fix, pred_fix = frame[3], frame[4], frame[7], frame[8]
-                        #     # true_mov_copy, pred_mov_copy, true_fix_copy, pred_fix_copy = frame[5], frame[6], frame[9], frame[10]
-                            
-                        #     # ax[0].add_patch(robot)
-                        #     # ax[0].add_patch(true_mov)
-                        #     # ax[0].add_patch(true_fix)
-                        #     # ax[0].add_patch(pred_mov)
-                        #     # ax[0].add_patch(pred_fix)
-                        #     # true_weight.set_text(f"true: {round(frame[11].item(), 3)}")
-                        #     # pred_weight.set_text(f"predicted: {round(frame[12].item(), 3)}")
-                        #     # ax[0].legend(loc='best')
-                        #     # ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all')
-
-                        #     # ax[1].add_patch(robot_1)
-                        #     # ax[1].add_patch(true_mov_copy)
-                        #     # ax[1].add_patch(true_fix_copy)
-                        #     # ax[1].legend(loc='best')
-                        #     # ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth')
-
-                        #     # ax[2].add_patch(robot_2)
-                        #     # ax[2].add_patch(pred_mov_copy)
-                        #     # ax[2].add_patch(pred_fix_copy)
-                        #     # ax[2].legend(loc='best')
-                        #     # ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted')
-
-                        #     last_patch.extend(frame)    
-
-                        tmp_img_path = f'{path}/{it}.pkl'
-                        with open(tmp_img_path, 'wb') as f:
-                            pickle.dump(patches, f)
-
-                        # anim = animation.FuncAnimation(fig, animate, frames=patches, interval=10, repeat=False)
-                        # anim.save(tmp_img_path, writer = FFwriter(30))
-                        # plt.close()
-
-                        # plt.savefig(tmp_img_path)
-                        # plt.close()
-                        logger.upload_file(file_path=tmp_img_path, target_path=f"plots/", once=False)
-                        save_at_iter += RunnerArgs.save_plot_interval
+                if save_video_anim_eval:
+                    path = f'{HLP_ROOT_DIR}/tmp/legged_data'
+                    os.makedirs(path, exist_ok=True)
+                    tmp_img_path = f'{path}/{it}.pkl'
+                    with open(tmp_img_path, 'wb') as f:
+                        pickle.dump(patches, f)
+                    
+                    logger.upload_file(file_path=tmp_img_path, target_path=f"plots_eval/", once=False)
+                    save_at_iter += RunnerArgs.save_plot_interval
 
                     patches = []
-                    save_video_anim = False
-                    self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
-                    
-
-                if False and save_video_anim_eval:
-                    
-                    if it >= save_at_iter_eval:
-                        path = f'{HLP_ROOT_DIR}/tmp/legged_data'
-
-                        os.makedirs(path, exist_ok=True)
-                        
-                        fig, ax = plt.subplots(1, 3, figsize=(24, 8))
-                        last_eval_patch = []
-                        true_weight = ax[0].text(-0.8, 0.9, f"true:")
-                        pred_weight = ax[0].text(-0.8, 0.8, f"predicted:")
-
-                        # def init():
-                        #     pass
-
-                        def animate(frame):
-                            # for txt in fig.texts:
-                            #     txt.set_visible(False)
-
-                            if len(last_eval_patch) != 0:
-                                for i in last_eval_patch:
-                                    i.remove()
-                                last_eval_patch.clear()
-                            
-                            robot, robot_1, robot_2 = frame[0], frame[1], frame[2]
-                            true_mov, pred_mov, true_fix, pred_fix = frame[3], frame[4], frame[5], frame[6]
-                            true_mov_copy, pred_mov_copy, true_fix_copy, pred_fix_copy = frame[7], frame[8], frame[9], frame[10]
-                            
-                            ax[0].add_patch(robot)
-                            ax[0].add_patch(true_mov)
-                            ax[0].add_patch(true_fix)
-                            ax[0].add_patch(pred_mov)
-                            ax[0].add_patch(pred_fix)
-                            true_weight.set_text(f"true: {round(frame[12].item(), 3)}")
-                            pred_weight.set_text(f"predicted: {round(frame[12].item(), 3)}")
-                            ax[0].legend(loc='best')
-                            ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all')
-
-                            ax[1].add_patch(robot_1)
-                            ax[1].add_patch(true_mov_copy)
-                            ax[1].add_patch(true_fix_copy)
-                            ax[1].legend(loc='best')
-                            ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth')
-
-                            ax[2].add_patch(robot_2)
-                            ax[2].add_patch(pred_mov_copy)
-                            ax[2].add_patch(pred_fix_copy)
-                            ax[2].legend(loc='best')
-                            ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted')
-                            
-                            last_eval_patch.extend(frame[:-2])
-
-                        tmp_img_path = f'{path}/{it}_eval.mp4'
-
-                        anim = animation.FuncAnimation(fig, animate, frames=patches_eval, interval=10, repeat=False)
-                        anim.save(tmp_img_path, writer = FFwriter(30))
-                        plt.close()
-
-                        # plt.savefig(tmp_img_path)
-                        # plt.close()
-                        logger.upload_file(file_path=tmp_img_path, target_path=f"plots_eval/", once=False)
-                        save_at_iter_eval += RunnerArgs.save_plot_interval
-                    patches_eval = []
                     save_video_anim_eval = False
+                    self.random_anim_env = np.random.choice(np.arange(0, self.num_train_envs))
+
+                if save_video_anim:
+                    path = f'{HLP_ROOT_DIR}/tmp/legged_data'
+                    os.makedirs(path, exist_ok=True)
+                    tmp_img_path = f'{path}/{it}.pkl'
+                    with open(tmp_img_path, 'wb') as f:
+                        pickle.dump(patches_eval, f)
+                    logger.upload_file(file_path=tmp_img_path, target_path=f"plots/", once=False)
+
+                    patches_eval = []
+                    save_video_anim = False
+                    # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
                 
             if RunnerArgs.save_video_interval:                
                 self.log_video(it)

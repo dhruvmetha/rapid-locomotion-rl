@@ -22,18 +22,18 @@ class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False, test=False):
         self.device= 'cuda:0'
         self.num_actions = 3
-        self.max_episode_length_s = 12
-        self.num_privileged_obs = 32 # 13 if world_cfg.fixed_block.add_to_obs else 9
+        self.max_episode_length_s = MAX_EPISODE_LENGTH
+        self.num_privileged_obs = 36 # 13 if world_cfg.fixed_block.add_to_obs else 9
         # self.num_obs = (13 + self.num_privileged_obs) if not USE_LATENT else 13
         self.num_obs = (13) if not USE_LATENT else 13
         # self.num_privileged_obs += 24 # + 17
         self.obs_history_length = ROLLOUT_HISTORY
 
-        self.num_obs_history = self.obs_history_length * (self.num_obs+12)
+        self.num_obs_history = self.obs_history_length * (self.num_obs+1)
         self.test_mode = test
 
         self.num_envs = num_envs
-        self.num_train_envs = max(1, int(num_envs*0.95))
+        self.num_train_envs = max(1, int(num_envs*EVAL_RATIO))
 
     
         self.ll_env, self.low_level_policy = self._load_env(num_envs, headless)
@@ -157,7 +157,7 @@ class HighLevelControlWrapper():
         return (self.goal_position - self.base_pos)
 
     def step(self, actions):
-        self.actions = torch.clamp(actions, -1., 1.)
+        self.actions = torch.clamp(actions, -1.5, 1.5)
         # print(self.actions[0])
         # self.actions[:, :2] *= (torch.norm(self.actions[:, :2], dim=1) > 0.2).unsqueeze(1)
         # self.actions[:, :2] *= (torch.norm
@@ -192,12 +192,13 @@ class HighLevelControlWrapper():
         # print("reset", self.obs_history.shape, self.obs_history[0, -25:-10])
         self.compute_observations()
         self.last_actions[:] = self.actions[:]
-
-        obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques), dim=-1)
+        
+        print(self.ll_env.joint_work[0])
+        obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.joint_work.view(-1, 1)), dim=-1)
 
 
         # print("pre cat", self.obs_history.shape, self.obs_history[0, -25:-10])
-        self.obs_history = torch.cat((self.obs_history[:, (self.num_obs+12):], obs_hist_buf), dim=-1)
+        self.obs_history = torch.cat((self.obs_history[:, (self.num_obs+1):], obs_hist_buf), dim=-1)
         # print("post cat", self.obs_history.shape, self.obs_history[0, -25:-10])
         # print('reset_buf back', self.reset_buf[:5])
 
@@ -315,7 +316,7 @@ class HighLevelControlWrapper():
             
         self.extras['train/episode']['success'] += torch.sum((self.gs_ctr[train_env_ids] > 10).int()).item()
         self.extras['train/episode']['failure'] += torch.sum((self.time_buf[train_env_ids] & (self.gs_ctr[train_env_ids] <= 10)).int()).item()
-
+        
         self.extras['train/success'] += torch.sum((self.gs_ctr[train_env_ids] > 10).int()).item()
         self.extras['train/failure'] += torch.sum((self.time_buf[train_env_ids] & (self.gs_ctr[train_env_ids] <= 10)).int()).item()
         try:
@@ -327,6 +328,12 @@ class HighLevelControlWrapper():
 
         try:
             self.extras['train/episode']['success_rate'] = (self.extras['train/episode']['success']/(self.extras['train/episode']['success'] + self.extras['train/episode']['failure']))
+            
+        except:
+            pass
+
+        try:
+            self.extras['train/episode']['time_taken'] = self.extras['train/ep_length']/self.extras['train/env_count']
         except:
             pass
 
@@ -364,6 +371,11 @@ class HighLevelControlWrapper():
 
         try:
             self.extras['eval/episode']['success_rate'] = (self.extras['eval/episode']['success']/(self.extras['eval/episode']['success'] + self.extras['eval/episode']['failure']))
+        except:
+            pass
+
+        try:
+            self.extras['eval/episode']['time_taken'] = self.extras['eval/ep_length']/self.extras['eval/env_count']
         except:
             pass
         # if self.traj_id in eval_env_ids:

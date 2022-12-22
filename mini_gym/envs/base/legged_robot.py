@@ -129,6 +129,10 @@ class LeggedRobot(BaseTask):
             self.dof_pos[:] = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
             self.dof_vel[:] = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
 
+        self.joint_work[:] = torch.sum(self.torques * (self.dof_pos - self.last_dof_pos), dim=-1)
+        # print()
+        # self.change_in_dof
+
             # print(self.dof_pos[0])
             # print(self.dof_vel[0])
         self.post_physics_step()
@@ -185,6 +189,7 @@ class LeggedRobot(BaseTask):
         self.compute_observations()
 
         self.last_actions[:] = self.actions[:]
+        self.last_dof_pos[:] = self.dof_pos[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
 
@@ -708,6 +713,7 @@ class LeggedRobot(BaseTask):
         go1_ids_int32 = torch.tensor([self.gym.find_actor_index(self.envs[i.item()], 'go1', gymapi.DOMAIN_SIM) for i in env_ids], dtype=torch.int32, device=self.device)
 
         self.dof_pos[env_ids] = self.default_dof_pos
+        self.last_dof_pos[env_ids] = self.default_dof_pos
 
         # self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof),
         #                                                                 device=self.device)
@@ -1080,6 +1086,9 @@ class LeggedRobot(BaseTask):
                                    requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device,
                                         requires_grad=False)
+        self.last_dof_pos = torch.zeros_like(self.dof_pos)
+        self.joint_work = torch.zeros(self.num_envs, dtype=torch.float, device=self.device,
+                                        requires_grad=False)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
 
@@ -1116,6 +1125,8 @@ class LeggedRobot(BaseTask):
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        self.last_dof_pos[:] = self.default_dof_pos
+
 
         self.world_asset.init_buffers(root_states = self.all_root_states, dof_states = self.all_dof_state, rigid_body_states=self.all_rigid_body_state, contact_forces=self.all_contact_forces)
         # self.world_obs = self.world_asset.get_block_obs()
