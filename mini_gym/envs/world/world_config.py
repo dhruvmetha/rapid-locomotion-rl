@@ -104,14 +104,14 @@ INPLAY_ASSETS = [
 
         {
             'name': ['fb_three_fixed_block_2', 'fb_three_fixed_block_1', 'fb_three_movable_block_1'][::-1],
-            'size': [[lambda : round(np.random.uniform(*[0.1, 0.4]), 2), lambda: round(np.random.uniform(*[0.9, 1.5]), 2), lambda: 0.3], [lambda : round(np.random.uniform(*[0.1, 0.4]), 2), lambda: round(np.random.uniform(*[0.3, 0.9]), 2), lambda: 0.3], [lambda: round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), lambda: round(np.random.uniform(*[.3, 1.5]), 2), lambda: 0.3]][::-1],
+            'size': [[lambda : round(np.random.uniform(*[0.3, 0.3]), 2), lambda: round(np.random.uniform(*[0.9, 1.5]), 2), lambda: 0.3], [lambda : round(np.random.uniform(*[0.3, 0.3]), 2), lambda: round(np.random.uniform(*[0.3, 0.9]), 2), lambda: 0.3], [lambda: round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), lambda: round(np.random.uniform(*[.3, 1.5]), 2), lambda: 0.3]][::-1],
             'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15], [round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.15]][::-1],
             'density': [10000, 10000, 8][::-1]
         },
 
         # {
         #     'name': ['fb_three_fixed_block_4', 'fb_three_fixed_block_3', 'fb_three_movable_block_2'][::-1],
-        #     'size': [[lambda : round(np.random.uniform(*[0.1, 0.4]), 2), lambda: round(np.random.uniform(*[0.9, 1.5]), 2), lambda: 0.3], [lambda : round(np.random.uniform(*[0.1, 0.4]), 2), lambda: round(np.random.uniform(*[0.9, 1.5]), 2), lambda: 0.3], [lambda: round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), lambda: round(np.random.uniform(*[.3, 1.5]), 2), lambda: 0.3]][::-1],
+        #     'size': [[lambda : round(np.random.uniform(*[0.3, 0.3]), 2), lambda: round(np.random.uniform(*[0.9, 1.5]), 2), lambda: 0.3], [lambda : round(np.random.uniform(*[0.3, 0.3]), 2), lambda: round(np.random.uniform(*[0.9, 1.5]), 2), lambda: 0.3], [lambda: round(np.random.uniform(*world_cfg.movable_block.size_x_range), 2), lambda: round(np.random.uniform(*[.3, 1.5]), 2), lambda: 0.3]][::-1],
         #     'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15], [round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), .15], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.15]][::-1],
         #     'density': [10000, 10000, 8][::-1]
         # },
@@ -256,12 +256,12 @@ EVAL_INPLAY_ASSETS = [
             'density': [10000, 10000, 8]
         },
         
-        {
-            'name': ['fixed_asset_3', 'fixed_asset_4', 'movable_asset_2'],
-            'size': [[lambda: j for j in i] for i in [[0.3, 0.8, 0.3], [0.3, 0.4, 0.3], [0.25, 0.9, 0.3]]],
-            'pos': [[1.5, 0.5, 0.15], [2.25, -0.6, 0.15], [1.5, -0.4, 0.15]],
-            'density': [10000, 10000, 3]
-        },
+        # {
+        #     'name': ['fixed_asset_3', 'fixed_asset_4', 'movable_asset_2'],
+        #     'size': [[lambda: j for j in i] for i in [[0.3, 0.8, 0.3], [0.3, 0.4, 0.3], [0.25, 0.9, 0.3]]],
+        #     'pos': [[1.5, 0.5, 0.15], [2.25, -0.6, 0.15], [1.5, -0.4, 0.15]],
+        #     'density': [10000, 10000, 3]
+        # },
 
         {
             'name': ['fixed_asset_6', 'fixed_asset_7', 'movable_asset_4'],
@@ -273,16 +273,16 @@ EVAL_INPLAY_ASSETS = [
 
         {
             'name': ['fixed_asset_11', 'fixed_asset_12', 'movable_asset_7'],
-            'size':  [[lambda: j for j in i] for i in [[0.3, 0.8, 0.3], [0.5, 0.6, 0.3], [0.25, 1.5, 0.3]]],
+            'size':  [[lambda: 0.3, lambda: 0.8, lambda: 0.3], [lambda: 0.5, lambda: 0.6, lambda: 0.3], [lambda: 0.25, lambda: 1.5, lambda: 0.3]],
             'pos': [[1.3, 0.5, 0.15], [2.1, -0.5, 0.15], [.6, 0.0, 0.15]],
-            'density': [10000, 10000, 3]
+            'density': [10000, 10000, 8]
         },
 
-        # {
-        #     'name': ['fixed_asset_13', 'fixed_asset_14', 'movable_asset_8'],
-        #     'size':  [[lambda: j for j in i] for i in [[0.5, 0.8, 0.5], [0.5, 0.6, 0.3], [0.25, 1.7, 0.3]]],
-        #     'pos': [[1.3, -0.5, 0.25], [2.1, 0.5, 0.15], [.6, 0.0, 0.15]],
-        #     'density': [10000, 10000, 3]
-        # },
+        {
+            'name': ['fixed_asset_13', 'fixed_asset_14', 'movable_asset_8'],
+            'size':  [[lambda: 0.5, lambda: 0.8, lambda: 0.3], [lambda: 0.5, lambda: 0.6, lambda: 0.3], [lambda: 0.25, lambda: 1.7, lambda: 0.3]],
+            'pos': [[1.3, -0.5, 0.15], [2.1, 0.5, 0.15], [.6, 0.0, 0.15]],
+            'density': [10000, 10000, 8]
+        },
     ]
 

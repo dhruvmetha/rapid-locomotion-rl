@@ -276,13 +276,14 @@ class ActorCritic(nn.Module):
     def act_student(self, observations, observation_history, policy_info={}):
         priv_obs_pred = None
         if USE_LATENT:
+            # print('here', observation_history.shape)
             latent = self.adaptation_module(observation_history)
             actions_mean = self.actor_body(torch.cat((observations, latent), dim=-1))
             priv_obs_pred = self.env_factor_decoder(latent)
             policy_info["latents"] = latent.cpu().numpy()
         else:
             actions_mean = self.actor_body(observations)
-        return priv_obs_pred, actions_mean
+        return (priv_obs_pred, latent), actions_mean
 
     def act_teacher(self, observations, privileged_info, policy_info={}):
         priv_obs_pred = None
@@ -293,7 +294,7 @@ class ActorCritic(nn.Module):
             policy_info["latents"] = latent.detach().cpu().numpy()
         else:
             actions_mean = self.actor_body(observations)
-        return priv_obs_pred, actions_mean
+        return (priv_obs_pred, latent), actions_mean
 
     def evaluate(self, critic_observations, privileged_observations, **kwargs):
         if USE_LATENT:

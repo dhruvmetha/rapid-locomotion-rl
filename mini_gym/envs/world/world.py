@@ -69,7 +69,6 @@ class WorldAsset():
         for i in self.inplay_assets:
             self.asset_counts += len(i['name'])
             for j in i['name']:
-                # print(j)
                 self.train_eval_assets[j] = False
                 self.asset_idx_map[j] = idx_ctr
                 self.idx_asset_map[idx_ctr] = j
@@ -78,7 +77,6 @@ class WorldAsset():
         for i in self.eval_inplay_assets:
             self.asset_counts += len(i['name'])
             for j in i['name']:
-                # print(j)
                 self.train_eval_assets[j] = True
                 self.asset_idx_map[j] = idx_ctr
                 self.idx_asset_map[idx_ctr] = j
@@ -116,6 +114,9 @@ class WorldAsset():
         self.env_asset_bool = torch.zeros(self.num_envs, self.asset_counts, 1, dtype=torch.bool, device=self.device)
         self.all_train_ids = torch.arange(0, self.num_train_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
         self.all_eval_ids = torch.arange(self.num_train_envs, self.num_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
+
+
+        self.reset_timer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device) + 10
 
     def define_world(self, env_id):
         """
@@ -257,7 +258,7 @@ class WorldAsset():
                             mv_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
                             mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
-                            mv_y_range = (1.9 - mv_size_y)/2
+                            mv_y_range = (1.95 - mv_size_y)/2
 
                             movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
 
@@ -275,13 +276,13 @@ class WorldAsset():
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
                             if not fb_three_bool[1]:
-                                fx_y_range = (1.9 - fx_size_y)/2
+                                fx_y_range = (1.95 - fx_size_y)/2
                                 fixed_bp = [mv_x-mv_size_x/2-fx_size_x/2-np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
                                 fb_three_bool[1] = True
 
 
                             elif fb_three_bool[1] and not fb_three_bool[2]:
-                                fx_y_range = (1.9 - fx_size_y)/2
+                                fx_y_range = (1.95 - fx_size_y)/2
                                 fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
                                 fb_three_bool[2] = True
 
@@ -293,7 +294,7 @@ class WorldAsset():
                             mv_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
                             mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
-                            mv_y_range = (1.9 - mv_size_y)/2
+                            mv_y_range = (1.95 - mv_size_y)/2
 
                             movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
 
@@ -311,13 +312,13 @@ class WorldAsset():
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
                             if not bb_three_bool[1]:
-                                fx_y_range = (1.9 - fx_size_y)/2
+                                fx_y_range = (1.95 - fx_size_y)/2
                                 fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
                                 bb_three_bool[1] = True
 
                             elif bb_three_bool[1] and not bb_three_bool[2]:
                                 bb_offset = fixed_bp[0]
-                                fx_y_range = (1.9 - fx_size_y)/2
+                                fx_y_range = (1.95 - fx_size_y)/2
                                 fixed_bp = [mv_x+bb_offset/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
                                 bb_three_bool[2] = True
 
@@ -330,7 +331,7 @@ class WorldAsset():
                                 exit()
 
                             mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
-                            mv_y_range = (1.9 - mv_size_y)/2
+                            mv_y_range = (1.95 - mv_size_y)/2
                             
                             movable_bp = [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
                             movable_asset_name = asset.name
@@ -339,7 +340,7 @@ class WorldAsset():
 
                         elif asset.name == world_cfg.fixed_block.name or asset.name.startswith('fixed_block'):
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
-                            fx_y_range = (1.9 - fx_size_y)/2
+                            fx_y_range = (1.95 - fx_size_y)/2
                             if movable_bp is not None:
                                 mv_x, mv_y, _ = movable_bp
                                 mv_size_x = self.block_size[env_id, self.asset_idx_map[movable_asset_name], 0]
@@ -367,6 +368,7 @@ class WorldAsset():
         self.all_root_states[actor_indices, 6] = 1. 
         self.block_contact_buf[env_ids, :, :] = False
         self.block_contact_ctr[env_ids, :, :] = self.contact_memory_time + 1
+        self.reset_timer[env_ids] = 10
 
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.all_root_states), gymtorch.unwrap_tensor(actor_indices.to(dtype=torch.int32)), len(actor_indices))
 
@@ -391,7 +393,7 @@ class WorldAsset():
 
             movable_indicator = 0
             if 'mov' in name:
-                print(name)
+                # print(name)
                 movable_indicator = 1
             # print('here 4', self.all_contact_forces[ids_contact, :2])
             # print(self.all_root_states[ids, 0])
@@ -487,7 +489,9 @@ class WorldAsset():
             # print(self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
             
 
-            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] *= self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :] 
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] *= self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :]
+
+        
 
             # if name == "movable_block_1" and not self.train_eval_assets[name] and self.env_asset_bool[0, self.asset_idx_map["movable_block_1"]]:
             #     print(block_contact_buf)
@@ -514,7 +518,10 @@ class WorldAsset():
 
             self.env_asset_ctr[curr_env_ids, :] += 9*(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1))
 
-        print(all_obs[0, :])
+        all_obs *= (self.reset_timer == 0).view(-1, 1)
+        self.reset_timer[:] -= (self.reset_timer[:] > 0).int()
+
+        # print(all_obs[0, :])
         # 
             # print('done bb', self.block_contact_ctr)
         return all_obs

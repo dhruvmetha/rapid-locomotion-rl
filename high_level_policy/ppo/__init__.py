@@ -139,7 +139,7 @@ class Runner:
         lenbuffer_eval = deque(maxlen=200)
         patches = []
         patches_eval = []
-        self.random_anim_env = np.random.choice(np.arange(0, self.num_train_envs))
+        self.random_anim_env = np.random.choice(np.arange(0, num_train_envs))
         # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
         self.num_patches = 0
         save_video_anim = False
@@ -176,15 +176,18 @@ class Runner:
                     
                     ### main policy calls
                     (priv_train_pred, latent_enc), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs], student=(it > complete_student))
+
+                    
+
                     
                     if eval_expert:
-                        priv_obs_pred, actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:],
+                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:],
                                                                         privileged_obs[num_train_envs:])
                     else:
-                        priv_obs_pred, actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:],
+                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:],
                                                                         obs_history[num_train_envs:])
-
-                    ##  
+                    
+                    
                     
                     if USE_LATENT:
                         if it >= 0:
@@ -200,7 +203,7 @@ class Runner:
                                 pos, pos_pred = privileged_obs[num_train_envs][j:j+2], priv_obs_pred[0][j:j+2]
                                 rot, rot_pred = privileged_obs[num_train_envs][j+2:j+6], priv_obs_pred[0][j+2:j+6]
                                 size, size_pred = privileged_obs[num_train_envs][j+6:j+8], priv_obs_pred[0][j+6:j+8]
-
+  
                                 angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
                                 angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
@@ -252,7 +255,7 @@ class Runner:
                                     block_color = 'yellow'
                                 
                                 pred_block_color = 'blue'
-                                if priv_obs_pred[self.random_anim_env][j-1] > 0.8:
+                                if priv_train_pred[self.random_anim_env][j-1] > 0.8:
                                     pred_block_color = 'orange'
 
                                 patch_set_eval.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
@@ -270,7 +273,7 @@ class Runner:
 
                     obs_dict, rewards, dones, infos = ret
                     # print(dones[:5])
-                    if dones[0]:
+                    if dones[self.random_anim_env]:
                         save_video_anim = True
                     if dones[num_train_envs]:
                         save_video_anim_eval = True
@@ -278,10 +281,12 @@ class Runner:
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
 
-                    # print(obs_history)
-
                     obs, privileged_obs, obs_history, rewards, dones = obs.to(self.device), privileged_obs.to(
                         self.device), obs_history.to(self.device), rewards.to(self.device), dones.to(self.device)
+                    # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
+                    obs_history[:num_train_envs, -20:] = latent_enc[:]
+                    obs_history[num_train_envs:, -20:] = latent_pred[:]
+
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
 
                     if 'train/episode' in infos:
@@ -373,7 +378,7 @@ class Runner:
 
                     patches = []
                     save_video_anim_eval = False
-                    self.random_anim_env = np.random.choice(np.arange(0, self.num_train_envs))
+                    self.random_anim_env = np.random.choice(np.arange(0, num_train_envs))
 
                 if save_video_anim:
                     path = f'{HLP_ROOT_DIR}/tmp/legged_data'
