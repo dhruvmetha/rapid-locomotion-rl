@@ -11,8 +11,8 @@ FFwriter = animation.FFMpegWriter
 
 RECENT_MODEL = sorted(glob.glob(f"/home/dhruv/projects_dhruv/priv_blind_run/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
 # RECENT_MODEL = "/home/dhruv/projects_dhruv/priv_blind_run/high_level_policy/models/teacher_student_variety_v1_good_result"
-source_folder = f"{RECENT_MODEL}/plots_eval"
-dest_folder = f"{RECENT_MODEL}/animations_eval"
+source_folder = f"{RECENT_MODEL}/plots"
+dest_folder = f"{RECENT_MODEL}/animations"
 if not os.path.exists(dest_folder):
     os.makedirs(dest_folder)
 

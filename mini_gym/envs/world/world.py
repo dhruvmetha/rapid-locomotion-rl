@@ -47,6 +47,7 @@ class WorldAsset():
         self.variables = None
 
         self.contact_memory_time = 20
+        self.reset_timer_count = 12
 
       
 
@@ -116,7 +117,7 @@ class WorldAsset():
         self.all_eval_ids = torch.arange(self.num_train_envs, self.num_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
 
 
-        self.reset_timer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device) + 10
+        self.reset_timer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device) + self.reset_timer_count
 
     def define_world(self, env_id):
         """
@@ -368,7 +369,7 @@ class WorldAsset():
         self.all_root_states[actor_indices, 6] = 1. 
         self.block_contact_buf[env_ids, :, :] = False
         self.block_contact_ctr[env_ids, :, :] = self.contact_memory_time + 1
-        self.reset_timer[env_ids] = 10
+        self.reset_timer[env_ids] = self.reset_timer_count
 
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.all_root_states), gymtorch.unwrap_tensor(actor_indices.to(dtype=torch.int32)), len(actor_indices))
 
