@@ -23,7 +23,7 @@ from high_level_policy import GOAL_POSITION_TRAIN
 
 class LeggedRobot(BaseTask):
     def __init__(self, cfg: Cfg, sim_params, physics_engine, sim_device, headless, eval_cfg=None,
-                 initial_dynamics_dict=None):
+                 initial_dynamics_dict=None, train_ratio=0.95, hold_out=True):
         """ Parses the provided config file,
             calls create_sim() (which creates, simulation, terrain and environments),
             initilizes pytorch buffers used during training
@@ -44,6 +44,8 @@ class LeggedRobot(BaseTask):
         self.init_done = False
         self.initial_dynamics_dict = initial_dynamics_dict
         self.random_init_states = False
+        self.train_ratio = train_ratio
+        self.hold_out = hold_out
         if eval_cfg is not None: self._parse_cfg(eval_cfg)
         self._parse_cfg(self.cfg)
 
@@ -1322,7 +1324,7 @@ class LeggedRobot(BaseTask):
 
         self.box_asset = self.gym.create_box(self.sim, .1, .1, .1, gymapi.AssetOptions())
         
-        self.world_asset = WorldAsset(self.cfg, self.sim, self.gym, self.device)
+        self.world_asset = WorldAsset(self.cfg, self.sim, self.gym, self.device, self.train_ratio)
 
 
         self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)

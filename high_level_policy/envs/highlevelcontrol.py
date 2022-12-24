@@ -19,9 +19,10 @@ if not os.path.exists(TRAJ_IMAGE_FOLDER):
     os.makedirs(TRAJ_IMAGE_FOLDER)
 
 class HighLevelControlWrapper():
-    def __init__(self, num_envs=1, headless=False, test=False):
+    def __init__(self, num_envs=1, headless=False, test=False, full_info=False, train_ratio=0.95, hold_out=True):
         self.device= 'cuda:0'
         self.num_actions = 3
+        self.train_ratio = train_ratio
         self.max_episode_length_s = MAX_EPISODE_LENGTH
         self.num_privileged_obs = 36 # 13 if world_cfg.fixed_block.add_to_obs else 9
         # self.num_obs = (13 + self.num_privileged_obs) if not USE_LATENT else 13
@@ -31,9 +32,10 @@ class HighLevelControlWrapper():
 
         self.num_obs_history = self.obs_history_length * (self.num_obs+21)
         self.test_mode = test
+        self.hold_out = hold_out
 
         self.num_envs = num_envs
-        self.num_train_envs = max(1, int(num_envs*EVAL_RATIO))
+        self.num_train_envs = max(1, int(num_envs*train_ratio))
 
     
         self.ll_env, self.low_level_policy = self._load_env(num_envs, headless)
@@ -41,13 +43,13 @@ class HighLevelControlWrapper():
         self.all_obs_ids = torch.zeros(num_envs, device=self.device, dtype=torch.bool, requires_grad=False)
         self.touch_obs_ids = torch.zeros(num_envs, device=self.device, dtype=torch.bool, requires_grad=False)
 
-        for env_id in range(self.num_train_envs):
-            if np.random.uniform(0, 1) > 0.:
-                self.touch_obs_ids[env_id] = True
-            else:
-                self.all_obs_ids[env_id] = True
+        # for env_id in range(self.num_train_envs):
+        #     if np.random.uniform(0, 1) > 0.:
+        #         self.touch_obs_ids[env_id] = True
+        #     else:
+        #         self.all_obs_ids[env_id] = True
         
-        self.ll_env.world_asset.add_variables(all_obs_ids=self.all_obs_ids, touch_obs_ids=self.touch_obs_ids)
+        self.ll_env.world_asset.add_variables(full_info=full_info)
 
         self.dt = self.ll_env.dt
         self.max_episode_length = int(self.max_episode_length_s / self.ll_env.dt)
@@ -536,7 +538,7 @@ class HighLevelControlWrapper():
         eval_cfg = Cfg.copy(Cfg())
         eval_cfg.env.num_envs = self.num_envs - self.num_train_envs
         eval_cfg = None
-        env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=headless, cfg=Cfg, eval_cfg=eval_cfg)
+        env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=headless, cfg=Cfg, eval_cfg=eval_cfg, train_ratio=self.train_ratio, hold_out=self.hold_out)
         env = HistoryWrapper(env)
 
         # load policy

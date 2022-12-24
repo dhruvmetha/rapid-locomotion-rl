@@ -139,8 +139,8 @@ class Runner:
         lenbuffer_eval = deque(maxlen=200)
         patches = []
         patches_eval = []
-        self.random_anim_env = np.random.choice(np.arange(0, num_train_envs))
-        # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
+        # self.random_anim_env = np.random.choice(np.arange(0, num_train_envs))
+        self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
         self.num_patches = 0
         save_video_anim = False
         save_video_anim_eval = False
@@ -374,11 +374,12 @@ class Runner:
                         pickle.dump(patches, f)
                     
                     logger.upload_file(file_path=tmp_img_path, target_path=f"plots_eval/", once=False)
+                    os.remove(tmp_img_path)
                     save_at_iter += RunnerArgs.save_plot_interval
 
                     patches = []
                     save_video_anim_eval = False
-                    self.random_anim_env = np.random.choice(np.arange(0, num_train_envs))
+                    self.random_anim_env = 0 # np.random.choice(np.arange(0, num_train_envs))
 
                 if save_video_anim:
                     path = f'{HLP_ROOT_DIR}/tmp/legged_data'
@@ -387,7 +388,7 @@ class Runner:
                     with open(tmp_img_path, 'wb') as f:
                         pickle.dump(patches_eval, f)
                     logger.upload_file(file_path=tmp_img_path, target_path=f"plots/", once=False)
-
+                    os.remove(tmp_img_path)
                     patches_eval = []
                     save_video_anim = False
                     # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)

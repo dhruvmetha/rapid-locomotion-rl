@@ -26,7 +26,7 @@ if __name__ == '__main__':
     # add an optional argument for running in headless mode
     # this argument will be a boolean value (True or False)
     # the default value will be True
-    parser.add_argument('--head', action='store_false', default=True,
+    parser.add_argument('--head', action='store_true', default=False,
                         help='run in headless mode')
 
     # parse the command line arguments
@@ -35,9 +35,11 @@ if __name__ == '__main__':
     print(args.num_envs)
     print(args.head)
 
+    full_info = False
 
     num_envs = args.num_envs
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=args.head, test=False)
+    headless = not args.head
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=True, train_ratio=0.95, hold_out=True)
 
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'rapid-locomotion/%Y-%m-%d/{stem}/%H%M%S.%f'),
@@ -62,4 +64,4 @@ if __name__ == '__main__':
                 
     gpu_id = 0
     runner = Runner(env, device=f"cuda:{gpu_id}")
-    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=False)
+    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=True)

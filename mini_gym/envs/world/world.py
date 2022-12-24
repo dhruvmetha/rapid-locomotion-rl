@@ -23,7 +23,7 @@ class WorldSetup:
         pass
 
 class WorldAsset():
-    def __init__(self, cfg, sim, gym, device) -> None:
+    def __init__(self, cfg, sim, gym, device, train_ratio=0.95) -> None:
         """
         Creates the world environment objects like obstacles, walls, etc.
         """
@@ -32,7 +32,7 @@ class WorldAsset():
         self.sim = sim
         self.cfg = cfg
         self.num_envs = self.cfg.env.num_envs # gets initialized in post_create_world
-        self.num_train_envs = max(1, int(self.num_envs*EVAL_RATIO)) # gets initialized in post_create_world
+        self.num_train_envs = max(1, int(self.num_envs*train_ratio)) # gets initialized in post_create_world
         self.device = device
 
 
@@ -489,8 +489,7 @@ class WorldAsset():
             # print(all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]].shape, self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :].shape)
             # print(self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
             
-
-            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] *= self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :]
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] *= (self.variables['full_info'] | self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
 
         
 

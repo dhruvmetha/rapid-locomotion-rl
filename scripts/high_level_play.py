@@ -84,7 +84,7 @@ def random_actions_policy(obs):
     device = obs.device
     return 1.5 * torch.rand((num_envs, 3), device=device) - 0.75
     
-def straight_policy(obs):
+def straight_motion_policy(obs):
     num_envs, _ = obs.shape
     device = obs.device
     actions = torch.zeros((num_envs, 3), device=device)
@@ -106,6 +106,28 @@ def full_teacher_policy(obs, policy):
     priv_obs_pred_all, actions = policy(obs)
     return priv_obs_pred_all, actions
 
+def heuristic_policy_1(prev_obs, obs):
+    actions[:, 0] = 0.75
+    actions[:, 1] = 0.
+    actions[:, 2] = 0.
+    if torch.linalg.norm(obs[:, 0] - prev_obs[:, 0]) < 0.1:
+        actions[:, 0] = 0
+        if np.random.uniform(0, 1) > 0.5:
+            actions[:, 1] = 0.5
+        else:
+            actions[:, 1] = -0.5
+    
+    if torch.linalg.norm(obs[:, 1] - prev_obs[:, 1]) < 0.1:
+        actions[:, 0] = 0.5
+        actions[:, 1] = 0
+    
+    return actions
+
+def create_env(num_envs, headless, full_info, train_ratio=0.0):
+    from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=True, full_info=full_info, train_ratio=train_ratio)
+    return env
+
 if __name__ == "__main__":
     from tqdm import tqdm
     from pathlib import Path
@@ -125,12 +147,32 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    num_envs = args.num_envs
+    head = args.head
     print(args.num_envs)
     print(args.head)
+    all_modes = ["random_motion_policy", "straight_motion_policy", "heuristic_1", "heuristic_2", "main_policy", "teacher_policy", "full_teacher_policy"]
+    mode = all_modes[-1]
 
+    if mode == "full_teacher_policy":
+        env = create_env(num_envs, head, full_info=True, train_ratio=0.0)
+        action_func = full_teacher_policy
+    elif mode == "straight_motion_policy":
+        env = create_env(num_envs, head, full_info=True, train_ratio=0.0)
+        action_func = straight_motion_policy
+    elif mode == "random_motion_policy":
+        env = create_env(num_envs, head, full_info=True, train_ratio=0.0)
+        action_func = random_actions_policy
+    elif mode == "teacher_policy":
+        env = create_env(num_envs, head, full_info=False, train_ratio=0.0)
+        action_func = teacher_policy
+    elif mode == "main_policy":
+        env = create_env(num_envs, head, full_info=False, train_ratio=0.0)
+        action_func = student_policy
+    
 
-    num_envs = args.num_envs  
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=args.head, test=True)
+      
+    # env = HighLevelControlWrapper(num_envs=num_envs, headless=head, test=True)
 
     # recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
     model_path = EVAL_MODEL_PATH
@@ -141,7 +183,6 @@ if __name__ == "__main__":
 
     num_eval_steps = 1000
     obs = env.reset()
-
     import torch
 
     # for i in tqdm(range(num_eval_steps)):
@@ -154,11 +195,11 @@ if __name__ == "__main__":
     # obs = env.reset()
     patches = []
     for i in tqdm(range(num_eval_steps)):
-        obs_truth = obs['obs'][0]
-        priv_obs_truth = obs['privileged_obs'][0]
+        # obs_truth = obs['obs'][0]
+        # priv_obs_truth = obs['privileged_obs'][0]
         with torch.no_grad():
-            priv_obs_pred_all, actions = policy_student(obs)
-        priv_obs_pred = priv_obs_pred_all[0]
+            priv_obs_pred_all, actions = action_func(obs)
+        # priv_obs_pred = priv_obs_pred_all[0]
         # patch_set = get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred)
         # patches.append(patch_set)
         obs, rew, done, info = env.step(actions)
