@@ -9,7 +9,9 @@ import time
 FFwriter = animation.FFMpegWriter
 
 
-RECENT_MODEL = sorted(glob.glob(f"/home/dhruv/projects_dhruv/priv_blind_run/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
+# RECENT_MODEL = sorted(glob.glob(f"/common/home/dm1487/robotics_research/legged_manipulation/experimental/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
+RECENT_MODEL = sorted(glob.glob(f"./high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
+
 # RECENT_MODEL = "/home/dhruv/projects_dhruv/priv_blind_run/high_level_policy/models/teacher_student_variety_v1_good_result"
 source_folder = f"{RECENT_MODEL}/plots"
 dest_folder = f"{RECENT_MODEL}/animations"
@@ -74,8 +76,10 @@ while True:
     for file_name in updated_file_list:
         if file_name not in file_list:
             # call the function when a new file is detected
+            print('working on', Path(file_name).stem)
             on_new_file(file_name)
-            print(file_name)
+            print('done', Path(file_name).stem)
+
 
     # update the list of files
     file_list = updated_file_list

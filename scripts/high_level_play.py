@@ -37,7 +37,7 @@ def load_env(headless=False):
     actor_critic = ActorCritic(
         num_obs=env.num_obs, 
         num_privileged_obs=env.num_privileged_obs,
-        num_obs_history=(env.num_obs+12) * \
+        num_obs_history=(env.num_obs+21) * \
                         ROLLOUT_HISTORY,
         num_actions=env.num_actions)
 
@@ -198,11 +198,14 @@ if __name__ == "__main__":
         # obs_truth = obs['obs'][0]
         # priv_obs_truth = obs['privileged_obs'][0]
         with torch.no_grad():
-            priv_obs_pred_all, actions = action_func(obs)
+            priv_obs_pred_all, actions = policy_expert(obs)
         # priv_obs_pred = priv_obs_pred_all[0]
         # patch_set = get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred)
         # patches.append(patch_set)
         obs, rew, done, info = env.step(actions)
+        # print(obs['obs'][0, 0])
+        # print((obs['obs'][:, 0] > 3.5).nonzero())
+
         # if done[0]:
         #     if not os.path.exists(plots_path):
         #         os.makedirs(plots_path)

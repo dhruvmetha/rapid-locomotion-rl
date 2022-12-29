@@ -15,7 +15,9 @@ if __name__ == '__main__':
     from high_level_policy.ppo import Runner
 
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser() 
+     
+
 
     # add a positional argument for the number of environments
     # the type of this argument will be an integer
@@ -39,6 +41,7 @@ if __name__ == '__main__':
 
     num_envs = args.num_envs
     headless = not args.head
+
     env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=True, train_ratio=0.95, hold_out=True)
 
     stem = Path(__file__).stem

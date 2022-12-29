@@ -47,15 +47,17 @@ class WorldAsset():
         self.variables = None
 
         self.contact_memory_time = 20
-        self.reset_timer_count = 12
+        self.reset_timer_count = 15
 
       
 
         self.inplay_assets =  INPLAY_ASSETS # EVAL_INPLAY_ASSETS # INPLAY_ASSETS
         self.eval_inplay_assets =  EVAL_INPLAY_ASSETS # EVAL_INPLAY_ASSETS # INPLAY_ASSETS
 
-        self.all_inplay_assets = [*self.inplay_assets, *self.eval_inplay_assets]
+        # self.all_inplay_assets = [*self.inplay_assets, *self.eval_inplay_assets]
         self.inplay = {}
+
+        self.world_types_success = {}
 
 
         self.train_eval_assets = {}
@@ -66,8 +68,12 @@ class WorldAsset():
         self.idx_asset_map = {}
         self.env_assetname_map = {i: {} for i in range(self.num_envs)}
         self.env_assetname_bool_map = {i: {} for i in range(self.num_envs)}
+
+        self.world_types = 0
         idx_ctr = 0
         for i in self.inplay_assets:
+            self.world_types_success[self.world_types] = 0
+            self.world_types += 1
             self.asset_counts += len(i['name'])
             for j in i['name']:
                 self.train_eval_assets[j] = False
@@ -78,11 +84,11 @@ class WorldAsset():
         for i in self.eval_inplay_assets:
             self.asset_counts += len(i['name'])
             for j in i['name']:
-                self.train_eval_assets[j] = True
-                self.asset_idx_map[j] = idx_ctr
-                self.idx_asset_map[idx_ctr] = j
+                name_eval = j + '_eval'
+                self.train_eval_assets[name_eval] = True
+                self.asset_idx_map[name_eval] = idx_ctr
+                self.idx_asset_map[idx_ctr] = name_eval
                 idx_ctr += 1
-        
 
         self.block_size = torch.zeros((self.num_envs, self.asset_counts, 2), device=self.device, dtype=torch.float, requires_grad=False)
         self.block_weight = torch.zeros((self.num_envs, self.asset_counts, 1), device=self.device, dtype=torch.float, requires_grad=False)
@@ -142,10 +148,11 @@ class WorldAsset():
                 sizes = [j() for j in i['size'][idx]]
 
                 gym_assets.append(self.gym.create_box(self.sim, *sizes, asset_options))
+                final_name = name if env_id < self.num_train_envs else name + '_eval'
                 
-                self.block_size[env_id, self.asset_idx_map[name], :] = torch.tensor(sizes[:2])
+                self.block_size[env_id, self.asset_idx_map[final_name], :] = torch.tensor(sizes[:2])
+                asset_names.append(final_name)
                 
-                asset_names.append(i['name'][idx])
                 asset_pos.append(i['pos'][idx])
             assets_container.append([AssetDef(asset, name, pos) for asset, name, pos in zip(gym_assets, asset_names, asset_pos)])
 
@@ -193,6 +200,7 @@ class WorldAsset():
         self.env_origins = env_origins
 
         for name in self.asset_idx_map.keys():
+            # print(name)
             if not self.train_eval_assets[name]:
                 self.asset_root_ids[name] = torch.tensor([self.gym.find_actor_index(self.envs[i], name, gymapi.DOMAIN_SIM) for i in range(self.num_train_envs)], dtype=torch.long, device=self.device)
                 block_actor_handles = [self.gym.find_actor_handle(self.envs[i], name) for i in range(self.num_train_envs)]            
@@ -212,6 +220,9 @@ class WorldAsset():
         self.all_rigid_body_state = kwargs['rigid_body_states']
         self.all_contact_forces = kwargs['contact_forces']
         return
+
+    def _get_random_idx(self):
+        return np.random.choice(np.arange(0, self.world_types))
         
     def reset_world(self, env_ids, _):
         """
@@ -229,7 +240,9 @@ class WorldAsset():
             env_id = env_id.item()
             env_handle = self.envs[env_id]
             assets_container = self.env_assets_map[env_id]
-            random_idx = np.random.choice(np.arange(0, len(assets_container)))
+            # print(env_id)
+
+            random_idx = self._get_random_idx()
             self.inplay[env_id] = random_idx
             in_indices = []
             assets_marked = []
@@ -247,10 +260,12 @@ class WorldAsset():
                     actor_indices.append(self.gym.find_actor_index(env_handle, asset.name, gymapi.DOMAIN_SIM))
                     env_origins.append(self.env_origins[env_id])
                     assets_marked.append(asset.name)
+
                     
                     if idx == random_idx:
                         
-                        in_indices.append((actor_indices[-1], asset.name, env_id))
+                        
+                        # in_indices.append((actor_indices[-1], asset.name, env_id))
 
 
                         if asset.name.startswith('fb_three_mov'):
@@ -358,6 +373,8 @@ class WorldAsset():
 
                     else:
                         base_positions.append([bp - 100000.0 for bp in asset.base_position])
+                    
+                    # print("asset name: ", asset.name, env_id, base_positions[-1])
             
         actor_indices = torch.tensor(actor_indices, dtype=torch.long, device='cuda:0')
         base_positions = torch.tensor(base_positions, dtype=torch.float32, device='cuda:0')
@@ -387,6 +404,8 @@ class WorldAsset():
             if self.train_eval_assets[name]:
                 curr_env_ids = self.all_eval_ids.view(-1)
                 # print(curr_env_ids)
+            if len(curr_env_ids) == 0:
+                continue 
             
             ids = self.asset_root_ids[name]
             # print(name, ids)
@@ -518,8 +537,9 @@ class WorldAsset():
 
             self.env_asset_ctr[curr_env_ids, :] += 9*(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1))
 
-        all_obs *= (self.reset_timer == 0).view(-1, 1)
-        self.reset_timer[:] -= (self.reset_timer[:] > 0).int()
+        if not self.variables['full_info']:
+            all_obs *= (self.reset_timer == 0).view(-1, 1)
+            self.reset_timer[:] -= (self.reset_timer[:] > 0).int()
 
         # print(all_obs[0, :])
         # 

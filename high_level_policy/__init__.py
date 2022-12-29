@@ -1,8 +1,5 @@
-
-
 import os
 import glob
-
 
 HLP_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # print(HLP_ROOT_DIR)
@@ -13,7 +10,6 @@ TEACHER_STUDENT_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion
 
 EVAL_MODEL_PATH = RECENT_MODEL
 USE_LATENT = True
-
 
 STEP_SIZE = 2
 GOAL_THRESHOLD = 0.1
@@ -68,7 +64,7 @@ class world_cfg:
 
 class reward_scales:
     # terminal rewards
-    terminal_distance_covered = -0.01
+    terminal_distance_covered = -0.0
     terminal_distance_gs = 20.0
     terminal_ll_reset = -5.0
     terminal_time_out = -5.0
@@ -81,10 +77,10 @@ class reward_scales:
     time = -0.01 # -0.1
     action_rate = -0.05
     # ll_reset = -1.0
-    lateral_vel = -0.05
-    angular_vel = -0.05
-    backward_vel = -0.05
-    collision = -0.1
+    lateral_vel = -0.025
+    angular_vel = -0.025
+    backward_vel = -0.025
+    collision = -0.025
 
 
 # def euler_from_quaternion(x, y, z, w):

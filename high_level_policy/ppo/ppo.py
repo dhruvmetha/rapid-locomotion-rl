@@ -179,35 +179,33 @@ class PPO:
                 if not student:
                 # Adaptation module gradient step
                     for epoch in range(PPO_Args.num_adaptation_module_substeps):
-
-                        if self.iters >= 1000:
-                        
+                        with torch.enable_grad():
                             adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-                            with torch.no_grad():
-                                adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
-                                adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
-                                if old_adaptation_target is not None and self.iters <= 1200:
-                                    if torch.linalg.norm(privileged_obs_batch[0, :2]) > 0:
-                                        print('hereeee', torch.linalg.norm(obs_history_batch[0, -88:-68] - old_adaptation_target))
-                                        print('hereeee', torch.linalg.norm(obs_history_batch[0, -54:-34] - old_adaptation_target))
-                                        print('heree', torch.linalg.norm(obs_history_batch[0, -20:] - old_adaptation_target))
-                                old_adaptation_target = latent_pred[0].clone()
-                                
-                                adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
-                                mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+                        with torch.no_grad():
+                            adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
+                            adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+                            # if old_adaptation_target is not None and self.iters <= 500:
+                            #     if torch.linalg.norm(privileged_obs_batch[0, :2]) > 0:
+                            #         print('hereeee', torch.linalg.norm(obs_history_batch[0, -88:-68] - old_adaptation_target))
+                            #         print('hereeee', torch.linalg.norm(obs_history_batch[0, -54:-34] - old_adaptation_target))
+                            #         print('heree', torch.linalg.norm(obs_history_batch[0, -20:] - old_adaptation_target))
+                            # old_adaptation_target = latent_pred[0].clone()
                             
-                                # residual = (adaptation_target - adaptation_pred).norm(dim=1)
-                                # caches.slot_cache.log(env_bins_batch[:  , 0].cpu().numpy().astype(np.uint8),
-                                #                       sysid_residual=residual.cpu().numpy())
+                        adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
+                        mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+                        
+                            # residual = (adaptation_target - adaptation_pred).norm(dim=1)
+                            # caches.slot_cache.log(env_bins_batch[:  , 0].cpu().numpy().astype(np.uint8),
+                            #                       sysid_residual=residual.cpu().numpy())
 
-                            adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
-                            total_adap_loss = adaptation_loss # + adaptation_reconstruction_loss
+                        adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+                        total_adap_loss = adaptation_loss + (adaptation_reconstruction_loss)
 
-                            self.adaptation_module_optimizer.zero_grad()
-                            total_adap_loss.backward()
-                            self.adaptation_module_optimizer.step()
+                        self.adaptation_module_optimizer.zero_grad()
+                        total_adap_loss.backward()
+                        self.adaptation_module_optimizer.step()
 
-                            mean_adaptation_module_loss += adaptation_loss.item()
+                        mean_adaptation_module_loss += adaptation_loss.item()
                         
                 # else:
                 #     for epoch in range(PPO_Args.num_adaptation_module_substeps):
