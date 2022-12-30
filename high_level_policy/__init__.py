@@ -4,11 +4,11 @@ import glob
 HLP_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # print(HLP_ROOT_DIR)
 HLP_ENVS_DIR = os.path.join(HLP_ROOT_DIR, 'high_level_policy', 'envs')
-RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
+# RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
 PURE_RL_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/models/pure_rl_model"
 TEACHER_STUDENT_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/2022-11-29/high_level_train/122321.034489"
 
-EVAL_MODEL_PATH = RECENT_MODEL
+# EVAL_MODEL_PATH = RECENT_MODEL
 USE_LATENT = True
 
 STEP_SIZE = 2

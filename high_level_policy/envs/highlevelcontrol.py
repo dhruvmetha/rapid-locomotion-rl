@@ -50,6 +50,10 @@ class HighLevelControlWrapper():
         #         self.all_obs_ids[env_id] = True
         
         self.ll_env.world_asset.add_variables(full_info=full_info)
+        self.inplay = self.ll_env.world_asset.inplay_env_world
+        self.world_ctr = self.ll_env.world_asset.env_world_success
+        self.world_success = self.ll_env.world_asset.env_world_counts
+        self.world_dist = self.ll_env.world_asset.world_sampling_dist
 
         self.dt = self.ll_env.dt
         self.max_episode_length = int(self.max_episode_length_s / self.ll_env.dt)
@@ -183,12 +187,26 @@ class HighLevelControlWrapper():
 
         self.post_physics_step()
         env_ids = self.check_termination()
+        
+        self.world_ctr += self.inplay[env_ids].int().sum(dim=0)
+        sucess_env_ids = ((self.gs_buf) & (self.gs_ctr > 10)).nonzero(as_tuple=False).flatten()
+        self.world_success += self.inplay[sucess_env_ids].int().sum(dim=0)
+
+        if torch.prod(self.world_ctr > 5000).bool():
+            new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(4 * self.world_ctr.size(0)))
+            # new_dist = torch.exp(self.world_ctr - self.world_success)
+            self.world_dist = new_dist/new_dist.sum()
+            # print(self.world_dist)
+        
         self.reset_envs = self.reset_buf.clone()
         self.compute_reward()
 
 
         self.reset_idx(env_ids)
 
+        self.world_success *= self.world_ctr < 5000
+        self.world_ctr *= self.world_ctr < 5000
+        
         
                 
         # print("reset", self.obs_history.shape, self.obs_history[0, -25:-10])

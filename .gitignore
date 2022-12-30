@@ -73,3 +73,4 @@ wandb/
 models/
 *.pt
 cpp_files/
+activate_env.sh
