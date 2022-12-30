@@ -224,8 +224,12 @@ class WorldAsset():
         self.all_contact_forces = kwargs['contact_forces']
         return
 
-    def _get_random_idx(self):
-        return torch.multinomial(self.world_sampling_dist, 1)
+    def _get_random_idx(self, env_id):
+        if env_id < self.num_train_envs:
+            return torch.multinomial(self.world_sampling_dist, 1)
+        else:
+            assets_container = self.env_assets_map[env_id]
+            return np.random.choice(np.arange(0, len(assets_container)))
         
     def reset_world(self, env_ids, _):
         """
@@ -244,7 +248,7 @@ class WorldAsset():
             env_handle = self.envs[env_id]
             assets_container = self.env_assets_map[env_id]
 
-            random_idx = self._get_random_idx()
+            random_idx = self._get_random_idx(env_id)
             self.inplay_env_world[env_id, :]  = False
             self.inplay_env_world[env_id, random_idx] = True
             self.inplay[env_id] = random_idx
