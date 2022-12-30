@@ -196,7 +196,7 @@ class HighLevelControlWrapper():
             new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(4 * self.world_ctr.size(0)))
             # new_dist = torch.exp(self.world_ctr - self.world_success)
             self.world_dist = new_dist/new_dist.sum()
-            # print(self.world_dist)
+                # print(self.world_dist)
         
         self.reset_envs = self.reset_buf.clone()
         self.compute_reward()
