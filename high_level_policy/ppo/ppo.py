@@ -11,7 +11,7 @@ from high_level_policy.ppo import ActorCritic
 from high_level_policy.ppo import RolloutStorage
 from high_level_policy.ppo import caches
 
-from high_level_policy import USE_LATENT
+from high_level_policy import USE_LATENT, DECODER
 
 
 class PPO_Args(PrefixProto):
@@ -152,8 +152,9 @@ class PPO:
             loss = surrogate_loss + PPO_Args.value_loss_coef * value_loss - PPO_Args.entropy_coef * entropy_batch.mean()
             
             if USE_LATENT:
-                reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
-                loss += reconstruction_loss
+                if DECODER:
+                    reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
+                    loss += reconstruction_loss
 
                 if student:
                     with torch.no_grad():
@@ -182,7 +183,8 @@ class PPO:
                         with torch.enable_grad():
                             adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
                         with torch.no_grad():
-                            adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
+                            if DECODER:
+                                adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
                             adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
                             # if old_adaptation_target is not None and self.iters <= 500:
                             #     if torch.linalg.norm(privileged_obs_batch[0, :2]) > 0:
@@ -190,16 +192,19 @@ class PPO:
                             #         print('hereeee', torch.linalg.norm(obs_history_batch[0, -54:-34] - old_adaptation_target))
                             #         print('heree', torch.linalg.norm(obs_history_batch[0, -20:] - old_adaptation_target))
                             # old_adaptation_target = latent_pred[0].clone()
-                            
-                        adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
-                        mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+                        if DECODER:    
+                            adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
+                            mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
                         
                             # residual = (adaptation_target - adaptation_pred).norm(dim=1)
                             # caches.slot_cache.log(env_bins_batch[:  , 0].cpu().numpy().astype(np.uint8),
                             #                       sysid_residual=residual.cpu().numpy())
 
                         adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
-                        total_adap_loss = adaptation_loss + (adaptation_reconstruction_loss)
+                        total_adap_loss = adaptation_loss 
+                        
+                        if DECODER:
+                            total_adap_loss += (adaptation_reconstruction_loss)
 
                         self.adaptation_module_optimizer.zero_grad()
                         total_adap_loss.backward()

@@ -37,7 +37,7 @@ def load_env(headless=False):
     actor_critic = ActorCritic(
         num_obs=env.num_obs, 
         num_privileged_obs=env.num_privileged_obs,
-        num_obs_history=(env.num_obs+21) * \
+        num_obs_history=(env.num_obs+44) * \
                         ROLLOUT_HISTORY,
         num_actions=env.num_actions)
 
@@ -214,6 +214,6 @@ if __name__ == "__main__":
         #     patches = []
 
     # print(info['train/episode']['success'])
-    print(info['train/success'], info['train/failure'])
-    print(info['train/success_rate'])
-    print(info['train/ep_length']/info['train/env_count'])
+    # print(info['train/episode']['success'], info['train/episode']['failure'])
+    print(info['train/episode']['success_rate'])
+    # print(info['train/episode']['ep_length']/info['train/episode']['env_count'])

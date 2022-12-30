@@ -242,7 +242,9 @@ class ActorCritic(nn.Module):
                 latent = self.adaptation_module(observation_history)
             else:
                 latent = self.env_factor_encoder(privileged_observations)
-            priv_obs_pred = self.env_factor_decoder(latent)
+            priv_obs_pred = None
+            if DECODER:
+                priv_obs_pred = self.env_factor_decoder(latent)
             mean = self.actor_body(torch.cat((observations, latent), dim=-1))
         else:
             mean = self.actor_body(observations)
@@ -279,7 +281,9 @@ class ActorCritic(nn.Module):
             # print('here', observation_history.shape)
             latent = self.adaptation_module(observation_history)
             actions_mean = self.actor_body(torch.cat((observations, latent), dim=-1))
-            priv_obs_pred = self.env_factor_decoder(latent)
+            priv_obs_pred = None
+            if DECODER:
+                priv_obs_pred = self.env_factor_decoder(latent)
             policy_info["latents"] = latent.cpu().numpy()
         else:
             actions_mean = self.actor_body(observations)
@@ -290,7 +294,9 @@ class ActorCritic(nn.Module):
         if USE_LATENT:
             latent = self.env_factor_encoder(privileged_info)
             actions_mean = self.actor_body(torch.cat((observations, latent), dim=-1))
-            priv_obs_pred = self.env_factor_decoder(latent)
+            priv_obs_pred = None
+            if DECODER:
+                priv_obs_pred = self.env_factor_decoder(latent)
             policy_info["latents"] = latent.detach().cpu().numpy()
         else:
             actions_mean = self.actor_body(observations)

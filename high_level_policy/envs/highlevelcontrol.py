@@ -194,18 +194,16 @@ class HighLevelControlWrapper():
 
         if torch.prod(self.world_ctr > 5000).bool():
             new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(4 * self.world_ctr.size(0)))
-            # new_dist = torch.exp(self.world_ctr - self.world_success)
             self.world_dist = new_dist/new_dist.sum()
-                # print(self.world_dist)
+            # if torch.prod(self.world_ctr > 10000).bool():
+            self.world_success *= self.world_ctr < 5000
+            self.world_ctr *= self.world_ctr < 5000
         
         self.reset_envs = self.reset_buf.clone()
         self.compute_reward()
-
-
         self.reset_idx(env_ids)
 
-        self.world_success *= self.world_ctr < 5000
-        self.world_ctr *= self.world_ctr < 5000
+        
         
         
                 

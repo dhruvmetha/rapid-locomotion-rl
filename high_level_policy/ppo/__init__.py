@@ -189,7 +189,7 @@ class Runner:
                     
                     
                     
-                    if USE_LATENT:
+                    if USE_LATENT and DECODER:
                         if it >= 0:
 
                             patch_set = []
@@ -208,7 +208,6 @@ class Runner:
                                 angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
                                 block_color = 'red'
-                                # print(j-1, privileged_obs[num_train_envs][j-1])
                                 if privileged_obs[num_train_envs][j-1] == 1:
                                     block_color = 'yellow'
                                 
@@ -218,14 +217,8 @@ class Runner:
 
                                 patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
                                 patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
-                                # patch_set.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                                # patch_set.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))              
-
                                 patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
                                 patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
-
-                                # patch_set.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                                # patch_set.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))
                             
                             patches.append(patch_set)
 
@@ -364,7 +357,7 @@ class Runner:
                 mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss
             )
 
-            if USE_LATENT:
+            if USE_LATENT and DECODER:
 
                 if save_video_anim_eval:
                     path = f'{HLP_ROOT_DIR}/tmp/legged_data'
@@ -404,8 +397,8 @@ class Runner:
                 
                 logger.log_metrics_summary(key_values={"timesteps": self.tot_timesteps, "iterations": it})
                 print(logger.summary_caches[None])
+                print(self.env.world_dist)
                 logger.job_running()
-
                 
 
             if it % RunnerArgs.save_interval == 0:
