@@ -195,7 +195,7 @@ class HighLevelControlWrapper():
         self.world_success += self.inplay[sucess_env_ids].int().sum(dim=0)
 
         if self.world_ctr.sum() > 10000 and (torch.prod(self.world_ctr) > 0):
-            new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(4 * self.world_ctr.size(0)))
+            new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(8 * self.world_ctr.size(0)))
             self.world_dist[:] = new_dist/new_dist.sum()
             
             print(self.world_dist, self.world_success, self.world_ctr)

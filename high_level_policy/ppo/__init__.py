@@ -337,8 +337,8 @@ class Runner:
                 # Learning step
                 self.alg.compute_returns(obs[:num_train_envs], privileged_obs[:num_train_envs], student=((it > complete_student)), observation_history=obs_history[:num_train_envs])
 
-                if it % eval_freq == 0:
-                    self.env.reset_evaluation_envs()
+                # if it % eval_freq == 0:
+                #     self.env.reset_evaluation_envs()
 
                 if it % eval_freq == 0:
                     logger.save_pkl({"iteration": it,
@@ -473,7 +473,7 @@ class Runner:
         if len(frames) > 0:
             self.env.ll_env.pause_recording_eval()
             print("LOGGING EVAL VIDEO")
-            logger.save_video(frames, f"videos/{it:05d}_eval.mp4", fps=1 / self.env.ll_env.dt)
+            logger.save_video(frames, f"videos_eval/{it:05d}_eval.mp4", fps=1 / self.env.ll_env.dt)
 
     def get_inference_policy(self, device=None):
         self.alg.actor_critic.eval()

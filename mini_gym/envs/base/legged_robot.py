@@ -844,7 +844,7 @@ class LeggedRobot(BaseTask):
                 self.complete_video_frames = self.video_frames[:]
             self.video_frames = []
 
-        if cfg.env.record_video and self.eval_cfg is not None and self.num_train_envs in env_ids:
+        if cfg.env.record_video and self.num_envs in env_ids:
             if self.complete_video_frames_eval is None:
                 self.complete_video_frames_eval = []
             else:
@@ -1425,12 +1425,12 @@ class LeggedRobot(BaseTask):
             self.rendering_camera = self.gym.create_camera_sensor(self.envs[0], self.camera_props)
             self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(-1.5, 0.001, 3.0),
                                          gymapi.Vec3(0, 0, 0))
-            if self.eval_cfg is not None:
-                self.rendering_camera_eval = self.gym.create_camera_sensor(self.envs[self.num_train_envs],
-                                                                           self.camera_props)
-                self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs],
-                                             gymapi.Vec3(-1.5, 0.001, 3.0),
-                                             gymapi.Vec3(0, 0, 0))
+            
+            self.rendering_camera_eval = self.gym.create_camera_sensor(self.envs[self.num_envs-1],
+                                                                        self.camera_props)
+            self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_envs-1],
+                                            gymapi.Vec3(-1.5, 0.001, 3.0),
+                                            gymapi.Vec3(0, 0, 0))
         self.video_writer = None
         self.video_frames = []
         self.video_frames_eval = []
@@ -1460,18 +1460,18 @@ class LeggedRobot(BaseTask):
 
         if self.record_eval_now and self.complete_video_frames_eval is not None and len(
                 self.complete_video_frames_eval) == 0:
-            if self.eval_cfg is not None:
-                bx, by, bz = self.root_states[self.num_train_envs, 0], self.root_states[self.num_train_envs, 1], \
-                             self.root_states[self.num_train_envs, 2]
-                self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs],
-                                             gymapi.Vec3(bx-1.0, by, bz + 2.0),
-                                             gymapi.Vec3(bx, by, bz))
-                self.video_frame_eval = self.gym.get_camera_image(self.sim, self.envs[self.num_train_envs],
-                                                                  self.rendering_camera_eval,
-                                                                  gymapi.IMAGE_COLOR)
-                self.video_frame_eval = self.video_frame_eval.reshape(
-                    (self.camera_props.height, self.camera_props.width, 4))
-                self.video_frames_eval.append(self.video_frame_eval)
+            # if self.eval_cfg is not None:
+            bx, by, bz = self.root_states[self.num_envs-1, 0], self.root_states[self.num_envs-1, 1], \
+                            self.root_states[self.num_envs-1, 2]
+            self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_envs-1],
+                                            gymapi.Vec3(bx-1.0, by, bz + 2.0),
+                                            gymapi.Vec3(bx, by, bz))
+            self.video_frame_eval = self.gym.get_camera_image(self.sim, self.envs[self.num_envs-1],
+                                                                self.rendering_camera_eval,
+                                                                gymapi.IMAGE_COLOR)
+            self.video_frame_eval = self.video_frame_eval.reshape(
+                (self.camera_props.height, self.camera_props.width, 4))
+            self.video_frames_eval.append(self.video_frame_eval)
 
     def start_recording(self):
         self.complete_video_frames = None

@@ -11,7 +11,7 @@ if __name__ == '__main__':
     from pathlib import Path
     from ml_logger import logger
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper
-    from high_level_policy import HLP_ROOT_DIR
+    from high_level_policy import HLP_ROOT_DIR, FULL_INFO
     from high_level_policy.ppo import Runner
 
 
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     print(args.num_envs)
     print(args.head)
 
-    full_info = False
+    full_info = FULL_INFO
 
     num_envs = args.num_envs
     headless = not args.head

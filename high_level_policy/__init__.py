@@ -21,12 +21,35 @@ STUDENT_ENCODING = 5000
 DECODER = True
 EVAL_RATIO = .90
 MAX_EPISODE_LENGTH = 15
+FULL_INFO = True
 
+experiment_runs = ['full_info_decoder', 'full_info_no_decoder', 'touch_decoder', 'touch_no_decoder', 'pure_rl']
+exp = experiment_runs[2]
+if exp == 'full_info_decoder':
+    FULL_INFO = True
+    DECODER = True
+    USE_LATENT = True
+elif exp == 'full_info_no_decoder':
+    FULL_INFO = True
+    DECODER = False
+    USE_LATENT = True
+elif exp == 'touch_decoder':
+    FULL_INFO = False
+    DECODER = True
+    USE_LATENT = True
+elif exp == 'touch_no_decoder':
+    FULL_INFO = False
+    DECODER = False
+    USE_LATENT = True
+elif exp == 'pure_rl':
+    FULL_INFO = False
+    DECODER = False
+    USE_LATENT = False
 
 wandb_config = {
-    "project":'legged_navigation', "group":'random_train', "name":'touch_decoder'
+    "project":'legged_navigation', "group":'random_train_exp_3', "name":exp
 }
-task_inplay = f'master_task_{wandb_config["name"]}'
+task_inplay = f'master_task_{exp}'
 
 
 # RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
