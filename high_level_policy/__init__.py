@@ -4,17 +4,16 @@ import glob
 HLP_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # print(HLP_ROOT_DIR)
 HLP_ENVS_DIR = os.path.join(HLP_ROOT_DIR, 'high_level_policy', 'envs')
-RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
+
 PURE_RL_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/models/pure_rl_model"
 TEACHER_STUDENT_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/2022-11-29/high_level_train/122321.034489"
 
-EVAL_MODEL_PATH = RECENT_MODEL
 USE_LATENT = True
 
 STEP_SIZE = 2
 GOAL_THRESHOLD = 0.1
-GOAL_POSITION_TRAIN = [4.0, 0]
-GOAL_POSITION_VAL = [4.0, 0]
+GOAL_POSITION_TRAIN = [3.2, 0]
+GOAL_POSITION_VAL = [3.2, 0]
 TRAJ_IMAGE_FOLDER = f'traj_push_obs_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
 ROLLOUT_HISTORY = 50
 OCCUPANCY_GRID = False
@@ -22,6 +21,18 @@ STUDENT_ENCODING = 5000
 DECODER = True
 EVAL_RATIO = .90
 MAX_EPISODE_LENGTH = 15
+
+
+wandb_config = {
+    "project":'legged_navigation', "group":'random_train', "name":'touch_decoder'
+}
+task_inplay = f'master_task_{wandb_config["name"]}'
+
+
+# RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
+# EVAL_MODEL_PATH = RECENT_MODEL
+
+# task_eval_inplay = ['task_1']
 
 # BLOCK
 # class world_cfg:
@@ -66,22 +77,22 @@ class world_cfg:
 class reward_scales:
     # terminal rewards
     terminal_distance_covered = -0.0
-    terminal_distance_gs = 20.0
-    terminal_ll_reset = -5.0
-    terminal_time_out = -5.0
-    terminal_gs_velocity = -2.0
+    terminal_distance_gs = 100.0
+    terminal_ll_reset = 0
+    terminal_time_out = 0
+    terminal_gs_velocity = 0
 
     # step rewards
-    distance_gs  = 1.
-    velocity_gs = 1.
-    distance = -0.75       # 1 - 1/exp(distance to goal)
-    time = -0.01 # -0.1
-    action_rate = -0.05
+    distance_gs  = 0.
+    velocity_gs = 0.
+    distance = -0.01      # 1 - 1/exp(distance to goal)
+    time = -0.0 # -0.1
+    action_rate = -0.0
     # ll_reset = -1.0
-    lateral_vel = -0.025
-    angular_vel = -0.025
-    backward_vel = -0.025
-    collision = -0.025
+    lateral_vel = -0.00
+    angular_vel = -0.00
+    backward_vel = -0.00
+    collision = 0.00
 
 
 # def euler_from_quaternion(x, y, z, w):

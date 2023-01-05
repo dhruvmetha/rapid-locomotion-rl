@@ -156,7 +156,7 @@ class PPO:
                     reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
                     loss += reconstruction_loss
 
-                if student:
+                if student and False:
                     with torch.no_grad():
                         adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
                     
@@ -174,10 +174,11 @@ class PPO:
             mean_surrogate_loss += surrogate_loss.item()
 
             if USE_LATENT:
-                mean_reconstruction_loss += reconstruction_loss.item()
+                if DECODER:
+                    mean_reconstruction_loss += reconstruction_loss.item()
                 # reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_obs_pred)
                 
-                if not student:
+                if not student and False:
                 # Adaptation module gradient step
                     for epoch in range(PPO_Args.num_adaptation_module_substeps):
                         with torch.enable_grad():

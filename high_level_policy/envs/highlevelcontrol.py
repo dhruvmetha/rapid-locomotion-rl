@@ -104,6 +104,8 @@ class HighLevelControlWrapper():
             self.goal_position[:, 0] = GOAL_POSITION_VAL[0] # (3.0 * torch.rand(self.num_envs)) + 1.0   
             self.goal_position[:, 1] = GOAL_POSITION_VAL[1]  
         self.extras = {}
+        self.extras['train'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
+        self.extras['eval'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
 
 
         self.reward_scales = {k: v for k, v in vars(reward_scales).items() if not (k.startswith('__') or k.startswith('terminal'))}
@@ -189,22 +191,21 @@ class HighLevelControlWrapper():
         env_ids = self.check_termination()
         
         self.world_ctr += self.inplay[env_ids].int().sum(dim=0)
-        sucess_env_ids = ((self.gs_buf) & (self.gs_ctr > 10)).nonzero(as_tuple=False).flatten()
+        sucess_env_ids = ((self.gs_buf)).nonzero(as_tuple=False).flatten()
         self.world_success += self.inplay[sucess_env_ids].int().sum(dim=0)
 
-        if torch.prod(self.world_ctr > 5000).bool():
+        if self.world_ctr.sum() > 10000 and (torch.prod(self.world_ctr) > 0):
             new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(4 * self.world_ctr.size(0)))
-            self.world_dist = new_dist/new_dist.sum()
-            # if torch.prod(self.world_ctr > 10000).bool():
-            self.world_success *= self.world_ctr < 5000
-            self.world_ctr *= self.world_ctr < 5000
+            self.world_dist[:] = new_dist/new_dist.sum()
+            
+            print(self.world_dist, self.world_success, self.world_ctr)
+            self.world_success[:] = 0
+            self.world_ctr[:] = 0
         
         self.reset_envs = self.reset_buf.clone()
         self.compute_reward()
         self.reset_idx(env_ids)
 
-        
-        
         
                 
         # print("reset", self.obs_history.shape, self.obs_history[0, -25:-10])
@@ -284,8 +285,8 @@ class HighLevelControlWrapper():
     
     def check_termination(self):
         # base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
-        self.gs_buf = torch.linalg.norm(self.base_pos[:, :2] - self.goal_position, dim=-1) < GOAL_THRESHOLD # reach a point goal
-        self.gs_ctr +=  self.gs_buf.int()  # reach a point goal
+        self.gs_buf = (self.base_pos[:, 0] - self.goal_position[:, 0]) > GOAL_THRESHOLD # reach a point goal
+        # self.gs_ctr +=  self.gs_buf.int()  # reach a point goal
         # self.gs_buf = torch.abs(self.base_pos[:, 0] - (self.goal_position[:, 0])) < GOAL_THRESHOLD # break out of region goal
         gs_env_ids = self.gs_buf.nonzero(as_tuple=False).flatten()
         # if len(gs_env_ids) > 100:
@@ -303,7 +304,7 @@ class HighLevelControlWrapper():
 
         # self.ll_dones |= self.time_buf
         self.reset_buf |= self.ll_dones
-        self.reset_buf |= (self.gs_ctr > 10)
+        self.reset_buf |= self.gs_buf
         self.reset_buf |= self.time_buf
         # print('reset_buf', self.reset_buf[:5])
 
@@ -324,33 +325,22 @@ class HighLevelControlWrapper():
                 self.episode_sums[key][train_env_ids] = 0
 
 
-            if "success" not in self.extras["train/episode"]:
-                # self.extras["train/episode"] = {}
-                self.extras['train/episode']['success'] = 0
-                self.extras['train/episode']['failure'] = 0
-                
-            self.extras['train/episode']['success'] += torch.sum((self.gs_ctr[train_env_ids] > 10).int()).item()
-            self.extras['train/episode']['failure'] += torch.sum((self.time_buf[train_env_ids] & (self.gs_ctr[train_env_ids] <= 10)).int()).item()
-            
-            self.extras['train/success'] += torch.sum((self.gs_ctr[train_env_ids] > 10).int()).item()
-            self.extras['train/failure'] += torch.sum((self.time_buf[train_env_ids] & (self.gs_ctr[train_env_ids] <= 10)).int()).item()
-            try:
-                self.extras['train/success_rate'] = self.extras['train/success']/(self.extras['train/success'] + self.extras['train/failure'])
-            except:
-                pass
-            self.extras['train/ep_length'] += torch.sum(self.episode_length_buf[train_env_ids]).item()
-            self.extras['train/env_count'] += len(train_env_ids)
+            self.extras['train']['success'] += torch.sum((self.gs_buf[train_env_ids].int())).item()
+            self.extras['train']['failure'] += torch.sum(((~self.gs_buf[train_env_ids])).int()).item()
+            self.extras['train']['ep_length'] += torch.sum(self.episode_length_buf[train_env_ids]).item()
+            self.extras['train']['env_count'] += len(train_env_ids)
+            # self.extras['train/success'] += torch.sum((self.gs_ctr[train_env_ids] > 10).int()).item()
+            # self.extras['train/failure'] += torch.sum((self.time_buf[train_env_ids] & (self.gs_ctr[train_env_ids] <= 10)).int()).item()
+            if self.extras['train']['env_count'] > 100:
+                try:
+                    self.extras['train/episode']['success_rate'] = self.extras['train']['success']/(self.extras['train']['success'] + self.extras['train']['failure'])
+                except:
+                    self.extras['train/episode']['success_rate'] = 0
 
-            try:
-                self.extras['train/episode']['success_rate'] = (self.extras['train/episode']['success']/(self.extras['train/episode']['success'] + self.extras['train/episode']['failure']))
-                
-            except:
-                pass
-
-            try:
-                self.extras['train/episode']['time_taken'] = self.extras['train/ep_length']/self.extras['train/env_count']
-            except:
-                pass
+                try:
+                    self.extras['train/episode']['time_taken'] = self.extras['train']['ep_length']/self.extras['train']['env_count']
+                except:
+                    self.extras['train/episode']['time_taken'] = 0
 
             self.touch_obs_ids[env_ids] = False
             self.all_obs_ids[env_ids] = False
@@ -375,24 +365,26 @@ class HighLevelControlWrapper():
                 self.extras["eval/episode"]['rew_' + key] = torch.mean(self.episode_sums[key][eval_env_ids])
                 self.episode_sums[key][eval_env_ids] = 0
 
-            if "success" not in self.extras["eval/episode"]:
-                # self.extras["eval/episode"] = {}
-                self.extras['eval/episode']['success'] = 0
-                self.extras['eval/episode']['failure'] = 0
-                # self.extras['eval/episode']['episode'] = 0
+            self.extras['eval']['success'] += torch.sum((self.gs_buf[eval_env_ids].int())).item()
+            self.extras['eval']['failure'] += torch.sum((~self.gs_buf[eval_env_ids]).int()).item()
+            self.extras['eval']['ep_length'] += torch.sum(self.episode_length_buf[eval_env_ids]).item()
+            self.extras['eval']['env_count'] += len(eval_env_ids)
+            # self.extras['eval/success'] += torch.sum((self.gs_ctr[eval_env_ids] > 10).int()).item()
+            # self.extras['eval/failure'] += torch.sum((self.time_buf[eval_env_ids] & (self.gs_ctr[eval_env_ids] <= 10)).int()).item()
+            if self.extras['eval']['env_count'] > 100:
+                try:
+                    self.extras['eval/episode']['success_rate'] = self.extras['eval']['success']/(self.extras['eval']['success'] + self.extras['eval']['failure'])
+                except:
+                    self.extras['eval/episode']['success_rate'] = 0
 
-            self.extras['eval/episode']['success'] += torch.sum((self.gs_ctr[eval_env_ids] > 10).int()).item()
-            self.extras['eval/episode']['failure'] += torch.sum((self.time_buf[eval_env_ids] & (self.gs_ctr[eval_env_ids] <= 10)).int()).item()
+                try:
+                    self.extras['eval/episode']['time_taken'] = self.extras['eval']['ep_length']/self.extras['eval']['env_count']
+                except:
+                    self.extras['eval/episode']['time_taken'] = 0
 
-            try:
-                self.extras['eval/episode']['success_rate'] = (self.extras['eval/episode']['success']/(self.extras['eval/episode']['success'] + self.extras['eval/episode']['failure']))
-            except:
-                pass
-
-            try:
-                self.extras['eval/episode']['time_taken'] = self.extras['eval/ep_length']/self.extras['eval/env_count']
-            except:
-                pass
+        if self.extras['train']['env_count'] > 5000:
+            self.extras['train'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
+            self.extras['eval'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
         # if self.traj_id in eval_env_ids:
             # print(self.traj_id)
             # if (self.episode_length_buf[self.traj_id]-1) >= 2:
@@ -458,12 +450,7 @@ class HighLevelControlWrapper():
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }
 
     def reset(self):
-        self.extras['success_rate'] = {}
-        self.extras['train/success'] = 0
-        self.extras['train/failure'] = 0
-        self.extras['train/success_rate'] = 0
-        self.extras['train/ep_length'] = 0
-        self.extras['train/env_count'] = 0
+        # 
         self.reset_idx(torch.arange(0, self.num_envs, 1, dtype=torch.long, device=self.device))
         # self.obs_history[:, :] = 0
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }
@@ -583,7 +570,8 @@ class HighLevelControlWrapper():
         return self.episode_length_buf/self.max_episode_length
 
     def _reward_distance(self):
-        return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1))) # reach a point goal
+        # return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1))) # reach a point 
+        return 1.0 - (1/torch.exp((self.goal_position[:, 0] - self.last_pos[:, 0] + GOAL_THRESHOLD))) # reach a point goal
         # d = torch.abs(self.last_pos[:, 0] - (self.goal_position[:, 0]))
         # r = (d/self.goal_position[:, 0])**0.4 # break out of region goal
         # return r

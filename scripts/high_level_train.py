@@ -1,6 +1,6 @@
 import isaacgym
 
-from high_level_policy import reward_scales, world_cfg
+from high_level_policy import reward_scales, world_cfg, task_inplay
 assert isaacgym
 import torch
 from mini_gym.envs import *
@@ -42,13 +42,13 @@ if __name__ == '__main__':
     num_envs = args.num_envs
     headless = not args.head
 
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=True, train_ratio=0.95, hold_out=True)
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=full_info, train_ratio=0.95, hold_out=True)
 
     stem = Path(__file__).stem
-    logger.configure(logger.utcnow(f'rapid-locomotion/%Y-%m-%d/{stem}/%H%M%S.%f'),
+    logger.configure(logger.utcnow(f'{task_inplay}/%Y-%m-%d/{stem}/%H%M%S.%f'),
                      root=Path(f"{HLP_ROOT_DIR}/high_level_policy/runs").resolve(), )
 
-    wandb.init('legged_navigation')
+    
 
     logger.log_text("""
                 charts: 

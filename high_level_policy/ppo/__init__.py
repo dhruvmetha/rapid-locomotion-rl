@@ -277,8 +277,10 @@ class Runner:
                     obs, privileged_obs, obs_history, rewards, dones = obs.to(self.device), privileged_obs.to(
                         self.device), obs_history.to(self.device), rewards.to(self.device), dones.to(self.device)
                     # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
-                    obs_history[:num_train_envs, -20:] = latent_enc[:]
-                    obs_history[num_train_envs:, -20:] = latent_pred[:]
+
+                    if USE_LATENT:
+                        obs_history[:num_train_envs, -20:] = latent_enc[:]
+                        obs_history[num_train_envs:, -20:] = latent_pred[:]
 
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
 
@@ -398,6 +400,8 @@ class Runner:
                 logger.log_metrics_summary(key_values={"timesteps": self.tot_timesteps, "iterations": it})
                 print(logger.summary_caches[None])
                 print(self.env.world_dist)
+                print(self.env.world_ctr)
+                print(self.env.world_success)
                 logger.job_running()
                 
 

@@ -6,6 +6,7 @@ import torch
 import time
 
 from high_level_policy import *
+from high_level_policy import task_inplay
 from mini_gym.envs.world.world_config import *
 
 class AssetDef:
@@ -49,10 +50,14 @@ class WorldAsset():
         self.contact_memory_time = 20
         self.reset_timer_count = 18
 
-      
+        tasks = {
+            'task_0': TASK_0,
+            'task_1': TASK_1,
+            'task_2': TASK_2,
+        }
 
-        self.inplay_assets =  INPLAY_ASSETS # EVAL_INPLAY_ASSETS # INPLAY_ASSETS
-        self.eval_inplay_assets =  EVAL_INPLAY_ASSETS # EVAL_INPLAY_ASSETS # INPLAY_ASSETS
+        self.inplay_assets = INPLAY_ASSETS
+        self.eval_inplay_assets =  EVAL_INPLAY_ASSETS # INPLAY_ASSETS
 
         self.inplay = {}
 
@@ -115,7 +120,7 @@ class WorldAsset():
             self.gym.create_box(self.sim, 9.0, .1, 1., asset_options), \
             self.gym.create_box(self.sim, 0.1, 1.8, 1., asset_options), \
                 ]
-        asset_names = ['wall_left' , 'wall_right', 'wall_back']
+        asset_names = ['wall_left' , 'wall_right', 'wall_back'] 
 
         # all base positions
         asset_pos = [[1., -1.0, .5],  [1., 1.0, .5], [-1.5, 0., .5]]
@@ -225,7 +230,7 @@ class WorldAsset():
         return
 
     def _get_random_idx(self, env_id):
-        if env_id < self.num_train_envs:
+        if (env_id < self.num_train_envs):
             return torch.multinomial(self.world_sampling_dist, 1)
         else:
             assets_container = self.env_assets_map[env_id]
@@ -250,8 +255,9 @@ class WorldAsset():
 
             random_idx = self._get_random_idx(env_id)
             self.inplay_env_world[env_id, :]  = False
-            self.inplay_env_world[env_id, random_idx] = True
-            self.inplay[env_id] = random_idx
+            if env_id < self.num_train_envs:
+                self.inplay_env_world[env_id, random_idx] = True
+                self.inplay[env_id] = random_idx
             in_indices = []
             assets_marked = []
 
@@ -278,9 +284,9 @@ class WorldAsset():
                             mv_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
                             mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
-                            mv_y_range = (1.95 - mv_size_y)/2
+                            mv_y_range = (0.975 - mv_size_y/2)
 
-                            movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
+                            movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.2]
 
                             movable_asset_name = asset.name
                             mv_size = (mv_size_x, mv_size_y)
@@ -296,14 +302,14 @@ class WorldAsset():
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
                             if not fb_three_bool[1]:
-                                fx_y_range = (1.95 - fx_size_y)/2
-                                fixed_bp = [mv_x-mv_size_x/2-fx_size_x/2-np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fx_y_range = (0.975 - fx_size_y/2)
+                                fixed_bp = [mv_x-mv_size_x/2-fx_size_x/2-np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                                 fb_three_bool[1] = True
 
 
                             elif fb_three_bool[1] and not fb_three_bool[2]:
-                                fx_y_range = (1.95 - fx_size_y)/2
-                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fx_y_range = (0.975 - fx_size_y/2)
+                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                                 fb_three_bool[2] = True
 
                             base_positions.append(fixed_bp)
@@ -314,9 +320,9 @@ class WorldAsset():
                             mv_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
                             mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
-                            mv_y_range = (1.95 - mv_size_y)/2
+                            mv_y_range = (0.975 - mv_size_y/2)
 
-                            movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
+                            movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.2]
 
                             movable_asset_name = asset.name
                             mv_size = (mv_size_x, mv_size_y)
@@ -332,14 +338,14 @@ class WorldAsset():
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
                             if not bb_three_bool[1]:
-                                fx_y_range = (1.95 - fx_size_y)/2
-                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fx_y_range = (0.975 - fx_size_y)
+                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                                 bb_three_bool[1] = True
 
                             elif bb_three_bool[1] and not bb_three_bool[2]:
                                 bb_offset = fixed_bp[0]
-                                fx_y_range = (1.95 - fx_size_y)/2
-                                fixed_bp = [mv_x+bb_offset/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fx_y_range = (0.975 - fx_size_y/2)
+                                fixed_bp = [mv_x+bb_offset/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                                 bb_three_bool[2] = True
 
 
@@ -351,24 +357,24 @@ class WorldAsset():
                                 exit()
 
                             mv_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
-                            mv_y_range = (1.95 - mv_size_y)/2
+                            mv_y_range = (0.975 - mv_size_y/2)
                             
-                            movable_bp = [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.15]
+                            movable_bp = [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.2]
                             movable_asset_name = asset.name
 
                             base_positions.append(movable_bp)
 
                         elif asset.name == world_cfg.fixed_block.name or asset.name.startswith('fixed_block'):
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
-                            fx_y_range = (1.95 - fx_size_y)/2
+                            fx_y_range = (0.975 - fx_size_y/2)
                             if movable_bp is not None:
                                 mv_x, mv_y, _ = movable_bp
                                 mv_size_x = self.block_size[env_id, self.asset_idx_map[movable_asset_name], 0]
                                 fx_size_x = self.block_size[env_id, self.asset_idx_map[asset.name], 0].item()
                                 
-                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                             else:
-                                fixed_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.15]
+                                fixed_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                             base_positions.append(fixed_bp)
                         
                         else:
