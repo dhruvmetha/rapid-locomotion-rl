@@ -72,6 +72,7 @@ def on_new_file(tmp_img_path):
 
 file_list = [] 
 
+print(source_folder)
 while True:
     # get the updated list of files in the folder
     if not os.path.exists(source_folder):

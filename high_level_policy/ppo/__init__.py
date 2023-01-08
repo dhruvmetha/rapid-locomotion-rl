@@ -141,6 +141,8 @@ class Runner:
         patches_eval = []
         # self.random_anim_env = np.random.choice(np.arange(0, num_train_envs))
         self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
+        self.random_eval_anim_env = -1 # np.random.randint(self.env.num_train_envs, self.env.num_envs)
+        self.eval_dones_ctr = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
         self.num_patches = 0
         save_video_anim = False
         save_video_anim_eval = False
@@ -170,25 +172,23 @@ class Runner:
                     pos_rob, rot_rob = obs[self.random_anim_env, :2], obs[self.random_anim_env, 2:6]
                     angle_rob = torch.rad2deg(torch.atan2(2.0*(rot_rob[0]*rot_rob[1] + rot_rob[3]*rot_rob[2]), 1. - 2.*(rot_rob[1]*rot_rob[1] + rot_rob[2]*rot_rob[2])))
 
-                    pos_rob_eval, rot_rob_eval = obs[num_train_envs, :2], obs[num_train_envs, 2:6]
+                    pos_rob_eval, rot_rob_eval = obs[self.random_eval_anim_env, :2], obs[self.random_eval_anim_env, 2:6]
                     angle_rob_eval = torch.rad2deg(torch.atan2(2.0*(rot_rob_eval[0]*rot_rob_eval[1] + rot_rob_eval[3]*rot_rob_eval[2]), 1. - 2.*(rot_rob_eval[1]*rot_rob_eval[1] + rot_rob_eval[2]*rot_rob_eval[2])))
 
                     
                     ### main policy calls
-                    (priv_train_pred, latent_enc), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs], student=(it > complete_student))
+                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student)), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs], student=(it > complete_student))
+                    
+                    priv_train_pred = priv_train_pred_teacher
+                    latent_enc = latent_enc_teacher
 
                     
-
                     
                     if eval_expert:
-                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:],
-                                                                        privileged_obs[num_train_envs:])
+                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
                     else:
-                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:],
-                                                                        obs_history[num_train_envs:])
-                    
-                    
-                    
+                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:])
+                        
                     if USE_LATENT and DECODER:
                         if it >= 0:
 
@@ -199,20 +199,20 @@ class Runner:
                             
                             for i in range(4):
                                 j = i*9 + 1
-                                
-                                pos, pos_pred = privileged_obs[num_train_envs][j:j+2], priv_obs_pred[0][j:j+2]
-                                rot, rot_pred = privileged_obs[num_train_envs][j+2:j+6], priv_obs_pred[0][j+2:j+6]
-                                size, size_pred = privileged_obs[num_train_envs][j+6:j+8], priv_obs_pred[0][j+6:j+8]
+
+                                pos, pos_pred = privileged_obs[self.random_eval_anim_env][j:j+2], priv_obs_pred[self.random_eval_anim_env][j:j+2]
+                                rot, rot_pred = privileged_obs[self.random_eval_anim_env][j+2:j+6], priv_obs_pred[self.random_eval_anim_env][j+2:j+6]
+                                size, size_pred = privileged_obs[self.random_eval_anim_env][j+6:j+8], priv_obs_pred[self.random_eval_anim_env][j+6:j+8]
   
                                 angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
                                 angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
                                 block_color = 'red'
-                                if privileged_obs[num_train_envs][j-1] == 1:
+                                if privileged_obs[self.random_eval_anim_env][j-1] == 1:
                                     block_color = 'yellow'
                                 
                                 pred_block_color = 'blue'
-                                if priv_obs_pred[0][j-1] > 0.8:
+                                if priv_obs_pred[self.random_eval_anim_env][j-1] > 0.8:
                                     pred_block_color = 'orange'
 
                                 patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
@@ -268,8 +268,11 @@ class Runner:
                     # print(dones[:5])
                     if dones[self.random_anim_env]:
                         save_video_anim = True
-                    if dones[num_train_envs]:
-                        save_video_anim_eval = True
+                    if dones[self.random_eval_anim_env]:
+                        self.eval_dones_ctr += 1
+                        if self.eval_dones_ctr >= 2:
+                            save_video_anim_eval = True
+                            self.eval_dones_ctr = 0
 
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
@@ -279,7 +282,7 @@ class Runner:
                     # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
 
                     if USE_LATENT:
-                        obs_history[:num_train_envs, -20:] = latent_enc[:]
+                        obs_history[:num_train_envs, -20:] = latent_enc_student[:]
                         obs_history[num_train_envs:, -20:] = latent_pred[:]
 
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
@@ -349,6 +352,22 @@ class Runner:
             
             mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss = self.alg.update(student=((it > complete_student)))
 
+            mean_eval_adaptation_module_loss = 0
+            mean_eval_teacher_reconstruction_loss = 0
+            mean_eval_adaptation_reconstruction_loss = 0
+
+            if USE_LATENT:
+                with torch.inference_mode():
+                    (priv_obs_pred_teacher, latent_pred_teacher), _ = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
+
+                    (priv_obs_pred_student, latent_pred_student), _ = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:])
+
+                    mean_eval_adaptation_module_loss = torch.nn.functional.mse_loss(latent_pred_teacher, latent_pred_student).item()
+
+                    if DECODER:
+                        mean_eval_teacher_reconstruction_loss = torch.nn.functional.mse_loss(privileged_obs[num_train_envs:], priv_obs_pred_teacher).item()
+                        mean_eval_adaptation_reconstruction_loss = torch.nn.functional.mse_loss(privileged_obs[num_train_envs:], priv_obs_pred_student).item()
+
             logger.store_metrics(
                 time_elapsed=logger.since('start'),
                 time_iter=logger.split('epoch'),
@@ -356,34 +375,46 @@ class Runner:
                 mean_value_loss=mean_value_loss,
                 mean_surrogate_loss=mean_surrogate_loss,
                 mean_reconstruction_loss=mean_reconstruction_loss,
-                mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss
+                mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss,
+                mean_eval_teacher_reconstruction_loss = mean_eval_teacher_reconstruction_loss,
+                mean_eval_adaptation_module_loss = mean_eval_adaptation_module_loss,
+                mean_eval_adaptation_reconstruction_loss = mean_eval_adaptation_reconstruction_loss,
             )
 
             if USE_LATENT and DECODER:
 
                 if save_video_anim_eval:
-                    path = f'{HLP_ROOT_DIR}/tmp/legged_data'
-                    os.makedirs(path, exist_ok=True)
-                    tmp_img_path = f'{path}/{it}.pkl'
-                    with open(tmp_img_path, 'wb') as f:
-                        pickle.dump(patches, f)
-                    
-                    logger.upload_file(file_path=tmp_img_path, target_path=f"plots_eval/", once=False)
-                    os.remove(tmp_img_path)
+
+                    try:
+                        path = f'{HLP_ROOT_DIR}/tmp/legged_data_{task_inplay}'
+                        # if not os.path.exists(path):
+                        os.makedirs(path, exist_ok=True)
+                        tmp_img_path = f'{path}/{it}.pkl'
+                        with open(tmp_img_path, 'wb') as f:
+                            pickle.dump(patches, f)
+                        
+                        logger.upload_file(file_path=tmp_img_path, target_path=f"plots_eval/", once=False)
+                        os.remove(tmp_img_path)
+                    except:
+                        pass
+
                     save_at_iter += RunnerArgs.save_plot_interval
 
                     patches = []
                     save_video_anim_eval = False
-                    self.random_anim_env = 0 # np.random.choice(np.arange(0, num_train_envs))
+                    # self.random_eval_anim_env = -1 # np.random.randint(self.env.num_train_envs, self.env.num_envs)
 
                 if save_video_anim:
-                    path = f'{HLP_ROOT_DIR}/tmp/legged_data'
-                    os.makedirs(path, exist_ok=True)
-                    tmp_img_path = f'{path}/{it}.pkl'
-                    with open(tmp_img_path, 'wb') as f:
-                        pickle.dump(patches_eval, f)
-                    logger.upload_file(file_path=tmp_img_path, target_path=f"plots/", once=False)
-                    os.remove(tmp_img_path)
+                    try:
+                        path = f'{HLP_ROOT_DIR}/tmp/legged_data_{task_inplay}_eval/'
+                        os.makedirs(path, exist_ok=True)
+                        tmp_img_path = f'{path}/{it}.pkl'
+                        with open(tmp_img_path, 'wb') as f:
+                            pickle.dump(patches_eval, f)
+                        logger.upload_file(file_path=tmp_img_path, target_path=f"plots/", once=False)
+                        os.remove(tmp_img_path)
+                    except:
+                        pass
                     patches_eval = []
                     save_video_anim = False
                     # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
@@ -419,7 +450,6 @@ class Runner:
                     traced_script_body_module = torch.jit.script(body_model)
                     traced_script_body_module.save(body_path)
                     logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
-
                     
 
                     if USE_LATENT:
@@ -428,8 +458,6 @@ class Runner:
                         traced_script_adaptation_module = torch.jit.script(adaptation_module)
                         traced_script_adaptation_module.save(adaptation_module_path)
                         logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
-
-                    
 
             self.current_learning_iteration += num_learning_iterations  
 

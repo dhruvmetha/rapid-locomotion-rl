@@ -198,7 +198,6 @@ class HighLevelControlWrapper():
             new_dist = (1 - (self.world_success/self.world_ctr)) + (1/(8 * self.world_ctr.size(0)))
             self.world_dist[:] = new_dist/new_dist.sum()
             
-            print(self.world_dist, self.world_success, self.world_ctr)
             self.world_success[:] = 0
             self.world_ctr[:] = 0
         
@@ -382,7 +381,8 @@ class HighLevelControlWrapper():
                 except:
                     self.extras['eval/episode']['time_taken'] = 0
 
-        if self.extras['train']['env_count'] > 5000:
+        if (self.extras['train']['env_count'] + self.extras['eval']['env_count']) > 10000:
+            print("########################## resetting counters ##########################")
             self.extras['train'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
             self.extras['eval'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
         # if self.traj_id in eval_env_ids:
@@ -634,4 +634,7 @@ class HighLevelControlWrapper():
     
     def _reward_action_power(self):
         return (torch.sum((torch.abs(self.actions) > 1.0), dim=-1) > 0.) * 1.0
+
+    def _reward_zero_velocity(self):
+        return ((torch.linalg.norm(self.base_lin_vel, dim=-1) + torch.linalg.norm(self.base_ang_vel, dim=-1)) < 0.1) * 1.0
     

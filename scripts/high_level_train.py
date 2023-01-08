@@ -11,7 +11,7 @@ if __name__ == '__main__':
     from pathlib import Path
     from ml_logger import logger
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper
-    from high_level_policy import HLP_ROOT_DIR, FULL_INFO
+    from high_level_policy import HLP_ROOT_DIR, FULL_INFO, EVAL_EXPERT
     from high_level_policy.ppo import Runner
 
 
@@ -48,8 +48,6 @@ if __name__ == '__main__':
     logger.configure(logger.utcnow(f'{task_inplay}/%Y-%m-%d/{stem}/%H%M%S.%f'),
                      root=Path(f"{HLP_ROOT_DIR}/high_level_policy/runs").resolve(), )
 
-    
-
     logger.log_text("""
                 charts: 
                 - yKey: train/episode/rew_total/mean
@@ -67,4 +65,4 @@ if __name__ == '__main__':
                 
     gpu_id = 0
     runner = Runner(env, device=f"cuda:{gpu_id}")
-    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=True)
+    runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=EVAL_EXPERT)

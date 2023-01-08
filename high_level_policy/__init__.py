@@ -22,33 +22,60 @@ DECODER = True
 EVAL_RATIO = .90
 MAX_EPISODE_LENGTH = 15
 FULL_INFO = True
+EVAL_EXPERT = True
+ADAPTIVE_SAMPLE_ENVS = False
+SHARED = False
 
-experiment_runs = ['full_info_decoder', 'full_info_no_decoder', 'touch_decoder', 'touch_no_decoder', 'pure_rl']
-exp = experiment_runs[2]
+experiment_runs = ['pure_rl', 'full_info_decoder', 'teacher_decoder', 'student_decoder', 'teacher_no_decoder', 'student_no_decoder', 'student_decoder_0']
+exp = experiment_runs[int(os.environ.get('RUN_TYPE'))]
+print(exp)
 if exp == 'full_info_decoder':
     FULL_INFO = True
     DECODER = True
     USE_LATENT = True
+    EVAL_EXPERT = True
 elif exp == 'full_info_no_decoder':
     FULL_INFO = True
     DECODER = False
     USE_LATENT = True
-elif exp == 'touch_decoder':
+    EVAL_EXPERT = True
+elif exp == 'teacher_decoder':
     FULL_INFO = False
     DECODER = True
     USE_LATENT = True
-elif exp == 'touch_no_decoder':
+    EVAL_EXPERT = True
+elif exp == 'teacher_no_decoder':
     FULL_INFO = False
     DECODER = False
     USE_LATENT = True
+    EVAL_EXPERT = True
 elif exp == 'pure_rl':
     FULL_INFO = False
     DECODER = False
     USE_LATENT = False
+    EVAL_EXPERT = True
+elif exp == 'student_decoder':
+    FULL_INFO = False
+    DECODER = True
+    USE_LATENT = True
+    EVAL_EXPERT = False
+    # STUDENT_ENCODING = 2500
+elif exp == 'student_no_decoder':
+    FULL_INFO = False
+    DECODER = False
+    USE_LATENT = True
+    EVAL_EXPERT = False
+elif exp == 'student_decoder_0':
+    FULL_INFO = False
+    DECODER = True
+    USE_LATENT = True
+    EVAL_EXPERT = False
+    STUDENT_ENCODING = 0
 
 wandb_config = {
-    "project":'legged_navigation', "group":'random_train_exp_3', "name":exp
+    "project":'legged_navigation', "group":'new_tasks_train_exp_14', "name":exp, "mode": "online", "notes": "desc: training using a more dense reward, velocity penalty scaling : -0.001,history length : 50, addded eval adaptation and reconstruction eval measures, not adaptive training, fixed eval set; dataset: same train and test"
 }
+
 task_inplay = f'master_task_{exp}'
 
 
@@ -58,24 +85,7 @@ task_inplay = f'master_task_{exp}'
 # task_eval_inplay = ['task_1']
 
 # BLOCK
-# class world_cfg:
-#     CUSTOM_BLOCK = True
-#     class movable_block:
-#         name = 'movable_block'
-#         size_x_range = [0.3, 0.3]
-#         size_y_range = [1.8, 1.8] # [0.8, 1.5]
-#         pos_x_range = [1.4, 1.5]
-#         pos_y_range = [-0.0, 0.0]
-#         block_density_range = [1, 6]
 
-#     class fixed_block:
-#         add_to_obs = True
-#         name = 'fixed_block'
-#         num_obs = 2
-#         size_x_range = [0.3, 0.3]
-#         size_y_range = [0.5, 0.6] # [0.8, 1.5]
-#         pos_x_range = [1.8, 1.95]
-#         pos_y_range = [-0.6, 0.6]
 
 
 class world_cfg:
@@ -102,20 +112,21 @@ class reward_scales:
     terminal_distance_covered = -0.0
     terminal_distance_gs = 100.0
     terminal_ll_reset = 0
-    terminal_time_out = 0
+    terminal_time_out = -5.0
     terminal_gs_velocity = 0
 
     # step rewards
     distance_gs  = 0.
     velocity_gs = 0.
-    distance = -0.01      # 1 - 1/exp(distance to goal)
+    distance = -0.5      # 1 - 1/exp(distance to goal)
     time = -0.0 # -0.1
-    action_rate = -0.0
+    action_rate = -0.05
     # ll_reset = -1.0
-    lateral_vel = -0.00
-    angular_vel = -0.00
-    backward_vel = -0.00
-    collision = 0.00
+    lateral_vel = -0.005
+    angular_vel = -0.005
+    backward_vel = -0.001
+    collision = -0.01
+    zero_velocity = -0.001
 
 
 # def euler_from_quaternion(x, y, z, w):

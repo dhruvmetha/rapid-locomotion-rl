@@ -4,6 +4,7 @@ from isaacgym.torch_utils import *
 assert gymtorch
 import torch
 import time
+import random
 
 from high_level_policy import *
 from high_level_policy import task_inplay
@@ -34,6 +35,7 @@ class WorldAsset():
         self.cfg = cfg
         self.num_envs = self.cfg.env.num_envs # gets initialized in post_create_world
         self.num_train_envs = max(1, int(self.num_envs*train_ratio)) # gets initialized in post_create_world
+        self.num_eval_envs = self.num_envs - self.num_train_envs # gets initialized in post_create_world
         self.device = device
 
 
@@ -48,7 +50,7 @@ class WorldAsset():
         self.variables = None
 
         self.contact_memory_time = 20
-        self.reset_timer_count = 18
+        self.reset_timer_count = 25
 
         tasks = {
             'task_0': TASK_0,
@@ -74,6 +76,8 @@ class WorldAsset():
         self.env_assetname_bool_map = {i: {} for i in range(self.num_envs)}
 
         self.world_types = 0
+        self.eval_world_types = 0
+        
         idx_ctr = 0
         for i in self.inplay_assets:
             self.world_types_success[self.world_types] = 0
@@ -84,9 +88,11 @@ class WorldAsset():
                 self.asset_idx_map[j] = idx_ctr
                 self.idx_asset_map[idx_ctr] = j
                 idx_ctr += 1
-    
+
+
         for i in self.eval_inplay_assets:
             self.asset_counts += len(i['name'])
+            self.eval_world_types += 1
             for j in i['name']:
                 name_eval = j + '_eval'
                 self.train_eval_assets[name_eval] = True
@@ -107,6 +113,15 @@ class WorldAsset():
         self.env_world_success = torch.zeros(self.world_types, device=self.device, dtype=torch.int, requires_grad=False)
         self.env_world_counts = torch.zeros(self.world_types, device=self.device, dtype=torch.int, requires_grad=False)
 
+        self.eval_worlds = torch.zeros(self.num_eval_envs, device=self.device, dtype=torch.int, requires_grad=False)
+        self.total_eval_worlds = (self.num_eval_envs//self.eval_world_types) * self.eval_world_types
+        
+        if self.total_eval_worlds == 0:
+             self.eval_worlds[:] = torch.randint(0, self.eval_world_types, (self.num_eval_envs,))
+        else:
+            self.eval_worlds[:self.total_eval_worlds] = torch.arange(0, self.eval_world_types).view(-1, 1).repeat(1, self.num_eval_envs//self.eval_world_types).view(-1)
+            self.eval_worlds[self.total_eval_worlds:] = torch.randint(0, self.eval_world_types, (self.num_eval_envs - self.total_eval_worlds,))
+            
         self.world_sampling_dist = torch.zeros(self.world_types, device=self.device, dtype=torch.float, requires_grad=False) + 1/self.world_types
 
         self.obs = torch.zeros((self.num_envs, 24), device=self.device, dtype=torch.bool, requires_grad=False)
@@ -230,11 +245,19 @@ class WorldAsset():
         return
 
     def _get_random_idx(self, env_id):
-        if (env_id < self.num_train_envs):
+        if ADAPTIVE_SAMPLE_ENVS and (env_id < self.num_train_envs):
             return torch.multinomial(self.world_sampling_dist, 1)
         else:
             assets_container = self.env_assets_map[env_id]
-            return np.random.choice(np.arange(0, len(assets_container)))
+            if env_id >= self.num_train_envs:
+                if self.total_eval_worlds == 0:
+                    return torch.randint(0, len(assets_container), (1,))
+                else:
+                    if env_id > (self.num_train_envs + self.total_eval_worlds-1):
+                        return torch.randint(0, len(assets_container), (1,))
+                    else:
+                        return self.eval_worlds[env_id - self.num_train_envs]
+            return torch.randint(0, len(assets_container), (1,))
         
     def reset_world(self, env_ids, _):
         """
@@ -338,7 +361,7 @@ class WorldAsset():
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
 
                             if not bb_three_bool[1]:
-                                fx_y_range = (0.975 - fx_size_y)
+                                fx_y_range = (0.975 - fx_size_y/2)
                                 fixed_bp = [mv_x+mv_size_x/2+fx_size_x/2+np.random.uniform(0, 0.35), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                                 bb_three_bool[1] = True
 
@@ -405,8 +428,9 @@ class WorldAsset():
         ids_contact = []
         all_obs = torch.zeros((self.num_envs, 9*4), dtype=torch.float, device=self.device)
         self.env_asset_ctr[:, :] = torch.arange(0, 9, dtype=torch.long, device=self.device)
-
-        for _, name in enumerate(self.asset_idx_map.keys()):
+        asset_keys = list(self.asset_idx_map.keys())
+        random.shuffle(asset_keys)
+        for _, name in enumerate(asset_keys):
             
             curr_env_ids = self.all_train_ids.view(-1)
             if self.train_eval_assets[name]:
