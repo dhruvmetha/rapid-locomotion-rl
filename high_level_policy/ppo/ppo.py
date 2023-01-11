@@ -26,7 +26,7 @@ class PPO_Args(PrefixProto):
     adaptation_module_learning_rate = 1.e-3
     num_adaptation_module_substeps = 1
     schedule = 'adaptive'  # could be adaptive, fixed
-    gamma = 0.99
+    gamma = 0.9999
     lam = 0.95
     desired_kl = 0.01
     max_grad_norm = 1.
@@ -102,6 +102,10 @@ class PPO:
         mean_adaptation_module_loss = 0
         mean_adaptation_reconstruction_loss = 0
         old_adaptation_target = None
+
+        mean_entropy_loss = 0
+        mean_kl = 0
+
         generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, masks_batch, env_bins_batch in generator:
@@ -122,6 +126,8 @@ class PPO:
                                 torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (
                                 2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
                     kl_mean = torch.mean(kl)
+
+                    mean_kl += kl_mean.item()
 
                     if kl_mean > PPO_Args.desired_kl * 2.0:
                         self.learning_rate = max(1e-5, self.learning_rate / 1.5)
@@ -150,7 +156,10 @@ class PPO:
                 value_loss = (returns_batch - value_batch).pow(2).mean()
             
             loss = surrogate_loss + PPO_Args.value_loss_coef * value_loss - PPO_Args.entropy_coef * entropy_batch.mean()
-            
+
+            with torch.inference_mode():
+                mean_entropy_loss += PPO_Args.entropy_coef * entropy_batch.mean().item()
+
             if USE_LATENT:
                 if DECODER:
                     reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_train_pred_teacher)
@@ -163,10 +172,11 @@ class PPO:
                     # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
                     adaptation_loss = F.mse_loss(latent_enc_student, adaptation_target)
                     loss += adaptation_loss
-
-                    with torch.no_grad():
-                        adaptation_decoded = self.actor_critic.env_factor_decoder(latent_enc_student)
-                        adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
+                    
+                    if DECODER:
+                        with torch.no_grad():
+                            adaptation_decoded = self.actor_critic.env_factor_decoder(latent_enc_student)
+                            adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
                     # loss += adaptation_reconstruction_loss
 
             # Gradient step
@@ -234,6 +244,9 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_reconstruction_loss /= num_updates
+        mean_entropy_loss /= num_updates
+        mean_kl /= num_updates
+
         if USE_LATENT:
             if not student:
                 mean_adaptation_module_loss /= (num_updates * PPO_Args.num_adaptation_module_substeps)
@@ -245,6 +258,6 @@ class PPO:
 
         self.iters += 1
 
-        return mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss
+        return mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss
 
-    
+

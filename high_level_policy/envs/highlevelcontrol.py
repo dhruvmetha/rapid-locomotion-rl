@@ -636,5 +636,5 @@ class HighLevelControlWrapper():
         return (torch.sum((torch.abs(self.actions) > 1.0), dim=-1) > 0.) * 1.0
 
     def _reward_zero_velocity(self):
-        return ((torch.linalg.norm(self.base_lin_vel, dim=-1) + torch.linalg.norm(self.base_ang_vel, dim=-1)) < 0.1) * 1.0
+        return ((torch.linalg.norm(self.base_lin_vel, dim=-1) + torch.linalg.norm(self.base_ang_vel, dim=-1)) < 0.2) * 1.0
     

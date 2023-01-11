@@ -15,7 +15,7 @@ class AC_Args(PrefixProto, cli=False):
     shared_hidden_dims = [128, 13]
     activation = 'tanh'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
 
-    adaptation_module_branch_hidden_dims = [[256, 128]]
+    adaptation_module_branch_hidden_dims = [[1024, 512, 256, 128]]
 
     env_factor_encoder_branch_input_dims = [36 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_encoder_branch_latent_dims = [20 if world_cfg.fixed_block.add_to_obs else 4]

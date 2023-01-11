@@ -15,7 +15,7 @@ GOAL_THRESHOLD = 0.1
 GOAL_POSITION_TRAIN = [3.2, 0]
 GOAL_POSITION_VAL = [3.2, 0]
 TRAJ_IMAGE_FOLDER = f'traj_push_obs_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
-ROLLOUT_HISTORY = 50
+ROLLOUT_HISTORY = 100
 OCCUPANCY_GRID = False
 STUDENT_ENCODING = 5000
 DECODER = True
@@ -73,7 +73,7 @@ elif exp == 'student_decoder_0':
     STUDENT_ENCODING = 0
 
 wandb_config = {
-    "project":'legged_navigation', "group":'new_tasks_train_exp_14', "name":exp, "mode": "online", "notes": "desc: training using a more dense reward, velocity penalty scaling : -0.001,history length : 50, addded eval adaptation and reconstruction eval measures, not adaptive training, fixed eval set; dataset: same train and test"
+    "project":'legged_navigation', "group":'new_tasks_train_exp_21', "name":f'{exp}', "mode": "online", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, added task 0 distribution; using easy tasks: task0, task4, task5, task6; deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, history length : 100, addded eval adaptation and reconstruction eval measures, adaptive training, fixed eval set; dataset: same train and test"
 }
 
 task_inplay = f'master_task_{exp}'
@@ -120,7 +120,7 @@ class reward_scales:
     velocity_gs = 0.
     distance = -0.5      # 1 - 1/exp(distance to goal)
     time = -0.0 # -0.1
-    action_rate = -0.05
+    action_rate = -0.00
     # ll_reset = -1.0
     lateral_vel = -0.005
     angular_vel = -0.005

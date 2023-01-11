@@ -282,7 +282,10 @@ class Runner:
                     # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
 
                     if USE_LATENT:
-                        obs_history[:num_train_envs, -20:] = latent_enc_student[:]
+                        if it > 2500:
+                            obs_history[:num_train_envs, -20:] = latent_enc_student[:]
+                        else:
+                            obs_history[:num_train_envs, -20:] = latent_enc_teacher[:]
                         obs_history[num_train_envs:, -20:] = latent_pred[:]
 
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
@@ -350,7 +353,7 @@ class Runner:
                                     path=f"curriculum/info.pkl", append=True)
 
             
-            mean_value_loss, mean_surrogate_loss, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss = self.alg.update(student=((it > complete_student)))
+            mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss = self.alg.update(student=((it > complete_student)))
 
             mean_eval_adaptation_module_loss = 0
             mean_eval_teacher_reconstruction_loss = 0
@@ -375,6 +378,8 @@ class Runner:
                 mean_value_loss=mean_value_loss,
                 mean_surrogate_loss=mean_surrogate_loss,
                 mean_reconstruction_loss=mean_reconstruction_loss,
+                mean_entropy_loss=mean_entropy_loss,
+                mean_kl=mean_kl,
                 mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss,
                 mean_eval_teacher_reconstruction_loss = mean_eval_teacher_reconstruction_loss,
                 mean_eval_adaptation_module_loss = mean_eval_adaptation_module_loss,
