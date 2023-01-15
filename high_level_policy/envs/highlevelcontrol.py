@@ -15,16 +15,20 @@ from matplotlib.patches import Rectangle
 from high_level_policy import *
 from params_proto import PrefixProto, ParamsProto
 
+
+np.random.seed(42)
+torch.manual_seed(42)
+
 if not os.path.exists(TRAJ_IMAGE_FOLDER):
     os.makedirs(TRAJ_IMAGE_FOLDER)
-
+ 
 class HighLevelControlWrapper():
     def __init__(self, num_envs=1, headless=False, test=False, full_info=False, train_ratio=0.95, hold_out=True):
         self.device= 'cuda:0'
         self.num_actions = 3
         self.train_ratio = train_ratio
         self.max_episode_length_s = MAX_EPISODE_LENGTH
-        self.num_privileged_obs = 36 # 13 if world_cfg.fixed_block.add_to_obs else 9
+        self.num_privileged_obs = 40 # 13 if world_cfg.fixed_block.add_to_obs else 9
         # self.num_obs = (13 + self.num_privileged_obs) if not USE_LATENT else 13
         self.num_obs = (13) if not USE_LATENT else 13
         # self.num_privileged_obs += 24 # + 17
@@ -213,9 +217,13 @@ class HighLevelControlWrapper():
         
         obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques, self.ll_env.dof_vel, torch.zeros(self.obs_buf.size(0), 20, device=self.device)), dim=-1)
 
+        # print(obs_hist_buf.shape)
 
+        # print('before', self.obs_history[0, -60:])
+
+        # print(obs_hist_buf[0])
         self.obs_history = torch.cat((self.obs_history[:, (self.num_obs+44):], obs_hist_buf), dim=-1)
-        
+        # print('after', self.obs_history[0, -60:])
 
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }, self.rew_buf, self.reset_envs, self.extras
 
@@ -428,6 +436,9 @@ class HighLevelControlWrapper():
         #         pass
         #     else:
         #         pass
+
+        # if self.cfg.env.send_timeouts:
+        # self.extras["time_outs"] = self.time_buf[:self.num_train_envs]
 
         self.ll_env.reset_idx(env_ids)
         self.rew_buf[env_ids] = 0.

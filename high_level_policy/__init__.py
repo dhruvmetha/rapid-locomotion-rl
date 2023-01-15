@@ -18,16 +18,19 @@ TRAJ_IMAGE_FOLDER = f'traj_push_obs_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
 ROLLOUT_HISTORY = 100
 OCCUPANCY_GRID = False
 STUDENT_ENCODING = 5000
+TEACHER_FORCING = 2500
 DECODER = True
 EVAL_RATIO = .90
 MAX_EPISODE_LENGTH = 15
 FULL_INFO = True
 EVAL_EXPERT = True
 ADAPTIVE_SAMPLE_ENVS = False
+LSTM_ADAPTATION = False
 SHARED = False
 
-experiment_runs = ['pure_rl', 'full_info_decoder', 'teacher_decoder', 'student_decoder', 'teacher_no_decoder', 'student_no_decoder', 'student_decoder_0']
+experiment_runs = ['pure_rl', 'full_info_decoder', 'teacher_decoder', 'student_decoder', 'teacher_no_decoder', 'student_no_decoder', 'student_decoder_0', 'student_decoder_lstm']
 exp = experiment_runs[int(os.environ.get('RUN_TYPE'))]
+wandb_mode = str(os.environ.get('WANDB_MODE', 'online'))
 print(exp)
 if exp == 'full_info_decoder':
     FULL_INFO = True
@@ -44,6 +47,7 @@ elif exp == 'teacher_decoder':
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = True
+    TEACHER_FORCING = 2000
 elif exp == 'teacher_no_decoder':
     FULL_INFO = False
     DECODER = False
@@ -59,7 +63,8 @@ elif exp == 'student_decoder':
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = False
-    # STUDENT_ENCODING = 2500
+    STUDENT_ENCODING = 3000
+    TEACHER_FORCING = 2000
 elif exp == 'student_no_decoder':
     FULL_INFO = False
     DECODER = False
@@ -71,12 +76,21 @@ elif exp == 'student_decoder_0':
     USE_LATENT = True
     EVAL_EXPERT = False
     STUDENT_ENCODING = 0
+    TEACHER_FORCING = 2000
+elif exp == 'student_decoder_lstm':
+    FULL_INFO = False
+    DECODER = True
+    USE_LATENT = True
+    EVAL_EXPERT = False
+    STUDENT_ENCODING = 3000
+    TEACHER_FORCING = 2000
+    LSTM_ADAPTATION = True
 
 wandb_config = {
-    "project":'legged_navigation', "group":'new_tasks_train_exp_21', "name":f'{exp}', "mode": "online", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, added task 0 distribution; using easy tasks: task0, task4, task5, task6; deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, history length : 100, addded eval adaptation and reconstruction eval measures, adaptive training, fixed eval set; dataset: same train and test"
+    "project":'legged_navigation', "group":'one_task_train_exp_9', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 and 1; much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test. Student encoding at 3000 iterations, teacher forcing for 2000 iterations"
 }
 
-task_inplay = f'master_task_{exp}'
+task_inplay = f'task_{exp}'
 
 
 # RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]

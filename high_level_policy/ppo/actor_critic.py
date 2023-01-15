@@ -7,6 +7,8 @@ from torch.distributions import Normal
 
 from high_level_policy import *
 
+torch.manual_seed(42)
+
 class AC_Args(PrefixProto, cli=False):
     # policy
     init_noise_std = 1.0
@@ -15,14 +17,14 @@ class AC_Args(PrefixProto, cli=False):
     shared_hidden_dims = [128, 13]
     activation = 'tanh'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
 
-    adaptation_module_branch_hidden_dims = [[1024, 512, 256, 128]]
+    adaptation_module_branch_hidden_dims = [[4096, 2048, 1024, 512, 256, 128, 64]]
 
-    env_factor_encoder_branch_input_dims = [36 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_encoder_branch_input_dims = [40 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_encoder_branch_latent_dims = [20 if world_cfg.fixed_block.add_to_obs else 4]
     env_factor_encoder_branch_hidden_dims = [[256, 128]]
 
     env_factor_decoder_branch_input_dims = [20 if world_cfg.fixed_block.add_to_obs else 4]
-    env_factor_decoder_branch_latent_dims = [36 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_decoder_branch_latent_dims = [40 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_decoder_branch_hidden_dims = [[256, 128]]
 
 
@@ -155,24 +157,41 @@ class ActorCritic(nn.Module):
                 self.env_factor_decoder = nn.Sequential(*env_factor_decoder_layers)
                 self.add_module(f"decoder", self.env_factor_decoder)
 
-            # Adaptation module
-            for i, (branch_hidden_dims, branch_latent_dim) in enumerate(zip(AC_Args.adaptation_module_branch_hidden_dims,
-                                                                            AC_Args.env_factor_encoder_branch_latent_dims)):
-                adaptation_module_layers = []
-                adaptation_module_layers.append(nn.Linear(num_obs_history, branch_hidden_dims[0]))
-                adaptation_module_layers.append(activation)
-                for l in range(len(branch_hidden_dims)):
-                    if l == len(branch_hidden_dims) - 1:
-                        adaptation_module_layers.append(
-                            nn.Linear(branch_hidden_dims[l], branch_latent_dim))
-                    else:
-                        adaptation_module_layers.append(
-                            nn.Linear(branch_hidden_dims[l],
-                                    branch_hidden_dims[l + 1]))
-                        adaptation_module_layers.append(activation)
-            self.adaptation_module = nn.Sequential(*adaptation_module_layers)
-            # self.adaptation_module = nn.Identity()
-            self.add_module(f"adaptation_module", self.adaptation_module)
+            if not LSTM_ADAPTATION:
+                # Adaptation module
+                for i, (branch_hidden_dims, branch_latent_dim) in enumerate(zip(AC_Args.adaptation_module_branch_hidden_dims,
+                                                                                AC_Args.env_factor_encoder_branch_latent_dims)):
+                    adaptation_module_layers = []
+                    adaptation_module_layers.append(nn.Linear(num_obs_history, branch_hidden_dims[0]))
+                    adaptation_module_layers.append(activation)
+                    for l in range(len(branch_hidden_dims)):
+                        if l == len(branch_hidden_dims) - 1:
+                            adaptation_module_layers.append(
+                                nn.Linear(branch_hidden_dims[l], branch_latent_dim))
+                        else:
+                            adaptation_module_layers.append(
+                                nn.Linear(branch_hidden_dims[l],
+                                        branch_hidden_dims[l + 1]))
+                            adaptation_module_layers.append(activation)
+                self.adaptation_module = nn.Sequential(*adaptation_module_layers)
+
+            else:
+                # Adaptation module using RNN
+                class LSTM(nn.Module):
+                    def __init__(self, input_size, hidden_size, output_size):
+                        super(LSTM, self).__init__()
+                        self.hidden_size = hidden_size
+                        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+                        self.fc = nn.Linear(hidden_size, output_size)
+
+                    def forward(self, observation_history, hidden_states):
+                        out, hidden_states = self.lstm(observation_history, hidden_states)
+                        out = self.fc(out[:, -1, :])
+                        return out, hidden_states
+
+                self.adaptation_module = LSTM(num_obs_history//100, 128, 20)
+                # self.adaptation_module = nn.Identity()
+                self.add_module(f"adaptation_module", self.adaptation_module)
 
             total_latent_dim += int(torch.sum(torch.Tensor(AC_Args.env_factor_encoder_branch_latent_dims)))
 
@@ -247,6 +266,15 @@ class ActorCritic(nn.Module):
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
 
+    def get_latent_student(self, observation_history):
+        if not LSTM_ADAPTATION:
+            return self.adaptation_module(observation_history)
+        else:
+            hidden_states = (torch.zeros(1, observation_history.shape[0], 128).to(observation_history.device), torch.zeros(1, observation_history.shape[0], 128).to(observation_history.device))
+            observation_history_ = observation_history.view(-1, ROLLOUT_HISTORY, 57)
+            return self.adaptation_module(observation_history_, hidden_states)[0]
+
+
     def update_distribution(self, observations, privileged_observations, student=False, observation_history=None):
         priv_obs_pred_student, priv_obs_pred_teacher = None, None
         latent_teacher, latent_student = None, None
@@ -261,13 +289,14 @@ class ActorCritic(nn.Module):
                 priv_obs_pred_teacher = self.env_factor_decoder(latent_teacher)
             
             if student:
-                latent_student = self.adaptation_module(observation_history)
+                latent_student = self.get_latent_student(observation_history)
                 mean = self.actor_body(torch.cat((observations, latent_student), dim=-1))
                 # if DECODER:
                 #     priv_obs_pred_student = self.env_factor_decoder(latent_student)
             else:
                 with torch.no_grad():
-                    latent_student = self.adaptation_module(observation_history)
+
+                    latent_student = self.get_latent_student(observation_history)
                 mean = self.actor_body(torch.cat((observations, latent_teacher), dim=-1))
                 
         else:
@@ -304,10 +333,12 @@ class ActorCritic(nn.Module):
         latent = None
         if USE_LATENT:
             # print('here', observation_history.shape)
-            latent = self.adaptation_module(observation_history)
+            # latent = self.adaptation_module(observation_history)
+            latent = self.get_latent_student(observation_history)
             priv_obs_pred = None
             if DECODER:
                 priv_obs_pred = self.env_factor_decoder(latent)
+
             actions_mean = self.actor_body(torch.cat((observations, latent), dim=-1))
             policy_info["latents"] = latent.cpu().numpy()
         else:
@@ -334,7 +365,8 @@ class ActorCritic(nn.Module):
             if kwargs['student']:
                 if kwargs['observation_history'] is None:
                     raise "No observation history in evaluate" 
-                latent = self.adaptation_module(kwargs['observation_history'])
+                # latent = self.adaptation_module(kwargs['observation_history'])
+                latent = self.get_latent_student(kwargs['observation_history'])
             else:
                 latent = self.env_factor_encoder(privileged_observations)
             value = self.critic_body(torch.cat((critic_observations, latent), dim=-1))
