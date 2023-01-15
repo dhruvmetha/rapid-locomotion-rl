@@ -23,6 +23,9 @@ import pickle
 
 FFwriter = animation.FFMpegWriter
 
+np.random.seed(42)
+torch.manual_seed(42)
+
 def class_to_dict(obj) -> dict:
     if not hasattr(obj, "__dict__"):
         return obj
@@ -198,7 +201,7 @@ class Runner:
                             patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
                             
                             for i in range(4):
-                                j = i*9 + 1
+                                j = i*10 + 2
 
                                 pos, pos_pred = privileged_obs[self.random_eval_anim_env][j:j+2], priv_obs_pred[self.random_eval_anim_env][j:j+2]
                                 rot, rot_pred = privileged_obs[self.random_eval_anim_env][j+2:j+6], priv_obs_pred[self.random_eval_anim_env][j+2:j+6]
@@ -231,7 +234,7 @@ class Runner:
 
 
                             for i in range(4):
-                                j = i*9 + 1
+                                j = i*10 + 2
 
                                 pos, pos_pred = privileged_obs[self.random_anim_env][j:j+2], priv_train_pred[self.random_anim_env][j:j+2]
                                 rot, rot_pred = privileged_obs[self.random_anim_env][j+2:j+6], priv_train_pred[self.random_anim_env][j+2:j+6]
@@ -281,14 +284,17 @@ class Runner:
                         self.device), obs_history.to(self.device), rewards.to(self.device), dones.to(self.device)
                     # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
 
+                    
+
+                    self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
+
                     if USE_LATENT:
-                        if it > 2500:
+                        if (it > TEACHER_FORCING):
                             obs_history[:num_train_envs, -20:] = latent_enc_student[:]
                         else:
                             obs_history[:num_train_envs, -20:] = latent_enc_teacher[:]
                         obs_history[num_train_envs:, -20:] = latent_pred[:]
-
-                    self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
+                        # print('internal', obs_history[0, -25:])
 
                     if 'train/episode' in infos:
                         # for k, v in infos['train/episode'].items():
@@ -355,21 +361,21 @@ class Runner:
             
             mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss = self.alg.update(student=((it > complete_student)))
 
-            mean_eval_adaptation_module_loss = 0
-            mean_eval_teacher_reconstruction_loss = 0
-            mean_eval_adaptation_reconstruction_loss = 0
+            # mean_eval_adaptation_module_loss = 0
+            # mean_eval_teacher_reconstruction_loss = 0
+            # mean_eval_adaptation_reconstruction_loss = 0
 
-            if USE_LATENT:
-                with torch.inference_mode():
-                    (priv_obs_pred_teacher, latent_pred_teacher), _ = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
+            # if USE_LATENT:
+            #     with torch.inference_mode():
+            #         (priv_obs_pred_teacher, latent_pred_teacher), _ = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
 
-                    (priv_obs_pred_student, latent_pred_student), _ = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:])
+            #         (priv_obs_pred_student, latent_pred_student), _ = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:])
 
-                    mean_eval_adaptation_module_loss = torch.nn.functional.mse_loss(latent_pred_teacher, latent_pred_student).item()
+            #         mean_eval_adaptation_module_loss = torch.nn.functional.mse_loss(latent_pred_teacher, latent_pred_student).item()
 
-                    if DECODER:
-                        mean_eval_teacher_reconstruction_loss = torch.nn.functional.mse_loss(privileged_obs[num_train_envs:], priv_obs_pred_teacher).item()
-                        mean_eval_adaptation_reconstruction_loss = torch.nn.functional.mse_loss(privileged_obs[num_train_envs:], priv_obs_pred_student).item()
+            #         if DECODER:
+            #             mean_eval_teacher_reconstruction_loss = torch.nn.functional.mse_loss(privileged_obs[num_train_envs:], priv_obs_pred_teacher).item()
+            #             mean_eval_adaptation_reconstruction_loss = torch.nn.functional.mse_loss(privileged_obs[num_train_envs:], priv_obs_pred_student).item()
 
             logger.store_metrics(
                 time_elapsed=logger.since('start'),
@@ -381,9 +387,9 @@ class Runner:
                 mean_entropy_loss=mean_entropy_loss,
                 mean_kl=mean_kl,
                 mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss,
-                mean_eval_teacher_reconstruction_loss = mean_eval_teacher_reconstruction_loss,
-                mean_eval_adaptation_module_loss = mean_eval_adaptation_module_loss,
-                mean_eval_adaptation_reconstruction_loss = mean_eval_adaptation_reconstruction_loss,
+                # mean_eval_teacher_reconstruction_loss = mean_eval_teacher_reconstruction_loss,
+                # mean_eval_adaptation_module_loss = mean_eval_adaptation_module_loss,
+                # mean_eval_adaptation_reconstruction_loss = mean_eval_adaptation_reconstruction_loss,
             )
 
             if USE_LATENT and DECODER:
@@ -460,7 +466,15 @@ class Runner:
                     if USE_LATENT:
                         adaptation_module_path = f'{path}/adaptation_module_latest.jit'
                         adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
-                        traced_script_adaptation_module = torch.jit.script(adaptation_module)
+                        if not LSTM_ADAPTATION:
+                            traced_script_adaptation_module = torch.jit.script(adaptation_module)
+                        else:
+                            
+                            x = torch.randn(1, ROLLOUT_HISTORY, 57, device='cpu')
+                            hidden = (torch.zeros(1, 1, 128,  device='cpu'), torch.zeros(1, 1, 128,  device='cpu'))
+
+                            traced_script_adaptation_module = torch.jit.trace(adaptation_module, (x, hidden))
+                        
                         traced_script_adaptation_module.save(adaptation_module_path)
                         logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
 

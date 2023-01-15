@@ -13,6 +13,7 @@ from high_level_policy.ppo import caches
 
 from high_level_policy import USE_LATENT, DECODER
 
+torch.manual_seed(42)
 
 class PPO_Args(PrefixProto):
     # algorithm
@@ -21,7 +22,7 @@ class PPO_Args(PrefixProto):
     clip_param = 0.2
     entropy_coef = 0.01
     num_learning_epochs = 5
-    num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
+    num_mini_batches = 16  # mini batch size = num_envs*nsteps / nminibatches
     learning_rate = 1.e-3  # 5.e-4
     adaptation_module_learning_rate = 1.e-3
     num_adaptation_module_substeps = 1
@@ -74,6 +75,7 @@ class PPO:
         self.transition.observations = obs
         self.transition.critic_observations = obs
         self.transition.privileged_observations = privileged_obs
+        # print('adding to transition', obs_history[0, -60:])
         self.transition.observation_histories = obs_history
         return priv_latent, self.transition.actions
 
@@ -82,18 +84,105 @@ class PPO:
         self.transition.dones = dones
         # self.transition.env_bins = infos["env_bins"]
         # Bootstrapping on time outs
+        # since it timed-out, it does not get future true rewards anymore for whatever trajectory it may have taken
+        # thus we bootstrap the (maybe true) future reward using the value function. (induces bias)
         if 'time_outs' in infos:
             self.transition.rewards += PPO_Args.gamma * torch.squeeze(
                 self.transition.values * infos['time_outs'].unsqueeze(1).to(self.device), 1)
 
         # Record the transition
         self.storage.add_transitions(self.transition)
+        # print('saving to rollout store', self.transition.observation_histories[0, -60:])
         self.transition.clear()
         self.actor_critic.reset(dones)
 
     def compute_returns(self, last_critic_obs, last_critic_privileged_obs, **kwargs):
         last_values = self.actor_critic.evaluate(last_critic_obs, last_critic_privileged_obs, **kwargs).detach()
         self.storage.compute_returns(last_values, PPO_Args.gamma, PPO_Args.lam)
+
+
+    def decoder_loss(self, gt, pred):
+        
+        # reconstruction_loss = torch.tensor(0).float().to(self.device)
+
+        contact_gt = gt[:, 0::10]
+        movable_gt = gt[:, 1::10]
+
+        contact_pred = F.sigmoid(pred[:, 0::10])
+        movable_pred = F.sigmoid(pred[:, 1::10])
+
+        local_loss = lambda inp, tar : F.binary_cross_entropy(inp, tar)
+
+        # reconstruction_loss += local_loss(contact_pred, contact_gt) + local_loss(movable_pred, movable_gt)
+        
+        extract_idx = [torch.arange(0, 10, dtype=torch.long, device=self.device), torch.arange(10, 20, dtype=torch.long, device=self.device), torch.arange(20, 30, dtype=torch.long, device=self.device), torch.arange(30, 40, dtype=torch.long, device=self.device)]
+        reconstruction_loss = None
+        for i in extract_idx:
+            loss = F.binary_cross_entropy(F.sigmoid(pred[:, i[0]]), gt[:, i[0]]) 
+            loss += F.binary_cross_entropy(F.sigmoid(pred[:, i[1]]), gt[:, i[1]])
+            loss += F.mse_loss(pred[:, i[2:]], gt[:, i[2:]])
+
+            if reconstruction_loss is not None:
+                reconstruction_loss += loss
+            else:
+                reconstruction_loss = loss
+
+        # fixed_rects_full_idx = torch.cat([torch.arange(2, 10, dtype=torch.long, device=self.device), torch.arange(12, 20, dtype=torch.long, device=self.device), torch.arange(22, 30, dtype=torch.long, device=self.device)])
+        # bs, _ = gt.shape
+        # movable_rects_idx = torch.arange(0, 10, dtype=torch.long, device=self.device).repeat(bs, 1)
+        # movable_rects = torch.zeros(bs, 10, device=self.device)
+        # fixed_rects_idx = torch.arange(0, 30, dtype=torch.long, device=self.device).repeat(bs, 1)
+        # fixed_rects = torch.zeros(bs, 30, device=self.device)
+
+
+
+        # contact_mask = gt[:, 0::10] == 1
+        # movable_mask = gt[:, 1::10] == 1
+
+        # movable_contact = contact_mask * movable_mask
+        # ba, ba_idx = movable_contact.nonzero(as_tuple=True)
+        # if ba.size(0) > 0:
+        #     print('here1')
+        #     movable_rects_idx = movable_rects_idx[ba, :] + (ba_idx * 10).view(-1, 1)
+        #     print('here2')
+        #     movable_rects[ba, :] = gt[ba.view(-1, 1), movable_rects_idx]
+
+        # # split_gt = gt.view(-1, 4, 10)
+
+        # # for i in range(3):
+
+        # fixed_rects_idx = torch.arange(0, 30, dtype=torch.long, device=self.device).repeat(bs, 1)
+        # fixed_contact = contact_mask * (~movable_mask)
+        # ba, ba_idx = fixed_contact.nonzero(as_tuple=True)
+        # if ba.size(0) > 0:
+        #     print('here3', fixed_rects_idx[ba, :], ba, ba_idx)
+        #     fixed_rects_idx = (fixed_rects_idx[ba, :] + ((ba_idx) * 10).view(-1, 1))[:, :10]
+        #     print('here4', fixed_rects_idx)
+        #     fixed_rects[ba.view(-1, 1), fixed_rects_idx] = gt[ba.view(-1, 1), fixed_rects_idx]
+        #     print('here5')
+
+        # movable_rect_pred = pred[:, :10]
+        # fixed_rect_pred =  pred[:, 10:]
+
+        # contact_movable_rect_gt = movable_rects[:, 0]
+        # moving_movable_rect_gt = movable_rects[:, 1]
+
+        # contact_fixed_rect_gt = fixed_rects[:, 0::10]
+        # moving_fixed_rect_gt = fixed_rects[:, 1::10]
+        
+        # contact_movable_pred = F.sigmoid(movable_rect_pred[:, 0])
+        # moving_movable_pred = F.sigmoid(movable_rect_pred[:, 1])
+        
+        # contact_fixed_pred = F.sigmoid(fixed_rect_pred[:, 0::10])
+        # moving_fixed_pred = F.sigmoid(fixed_rect_pred[:, 1::10])
+
+        # local_loss = lambda inp, tar : F.binary_cross_entropy(inp, tar)
+
+        # reconstruction_loss = local_loss(contact_movable_pred, contact_movable_rect_gt) + local_loss(moving_movable_pred, moving_movable_rect_gt) + local_loss(contact_fixed_pred, contact_fixed_rect_gt) + local_loss(moving_fixed_pred, moving_fixed_rect_gt)
+
+        # reconstruction_loss += F.mse_loss(movable_rect_pred[:, 2:], movable_rects[:, 2:]) + F.mse_loss(fixed_rect_pred[:, fixed_rects_full_idx], fixed_rects[:, fixed_rects_full_idx])
+
+        return reconstruction_loss
 
     def update(self, student=False):
         mean_value_loss = 0
@@ -162,7 +251,57 @@ class PPO:
 
             if USE_LATENT:
                 if DECODER:
-                    reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_train_pred_teacher)
+                    
+                    # fixed_rects_full_idx = torch.cat([torch.arange(2, 10, dtype=torch.long, device=self.device), torch.arange(12, 20, dtype=torch.long, device=self.device), torch.arange(22, 30, dtype=torch.long, device=self.device)])
+
+                    # bs, _ = privileged_obs_batch.shape
+
+                    # movable_rects_idx = torch.arange(0, 10, dtype=torch.long, device=self.device).repeat(bs, 1)
+                    # movable_rects = torch.zeros(bs, 10, device=self.device)
+                    # fixed_rects_idx = torch.arange(0, 30, dtype=torch.long, device=self.device).repeat(bs, 1)
+                    # fixed_rects = torch.zeros(bs, 30, device=self.device)
+                    # contact_mask = privileged_obs_batch[:, 0::10] == 1
+                    # movable_mask = privileged_obs_batch[:, 1::10] == 1
+                    # movable_contact = contact_mask * movable_mask
+                    # ba, ba_idx = movable_contact.nonzero(as_tuple=True)
+                    
+                    # if ba.size(0) > 0:
+                    #     movable_rects_idx = movable_rects_idx[ba, :] + (ba_idx * 10).view(-1, 1)
+                    #     movable_rects[ba, :] = privileged_obs_batch[ba.view(-1, 1), movable_rects_idx]
+
+                    # fixed_contact = contact_mask * (~movable_mask)
+                    # ba, ba_idx = fixed_contact.nonzero(as_tuple=True)
+                    # if ba.size(0) > 0:
+                    #     fixed_rects_idx = fixed_rects_idx[ba, :] + (ba_idx * 10).view(-1, 1)
+                    #     fixed_rects[ba, :] = privileged_obs_batch[ba.view(-1, 1), fixed_rects_idx]
+
+
+                    # movable_rect_pred = priv_train_pred_teacher[:, :10]
+                    # fixed_rect_pred =  priv_train_pred_teacher[:, 10:]
+
+                    # contact_movable_rect_gt = movable_rects[:, 0]
+                    # moving_movable_rect_gt = movable_rects[:, 1]
+
+                    # contact_fixed_rect_gt = fixed_rects[:, 0]
+                    # moving_fixed_rect_gt = fixed_rects[:, 1]
+                    
+                    # contact_movable_pred = torch.nn.Sigmoid(movable_rect_pred[:, 0])
+                    # moving_movable_pred = torch.nn.Sigmoid(movable_rect_pred[:, 1])
+                    
+                    # contact_fixed_pred = torch.nn.Sigmoid(fixed_rect_pred[:, 0::10])
+                    # moving_fixed_pred = torch.nn.Sigmoid(fixed_rect_pred[:, 1::10])
+
+                    # local_loss = lambda inp, tar : F.binary_cross_entropy(inp, tar)
+
+
+                    # reconstruction_loss = local_loss(contact_movable_pred, contact_movable_rect_gt) + local_loss(moving_movable_pred, moving_movable_rect_gt) + local_loss(contact_fixed_pred, contact_fixed_rect_gt) + local_loss(moving_fixed_pred, moving_fixed_rect_gt)
+
+                    # reconstruction_loss += F.mse_loss(movable_rect_pred[:, 2:], movable_rects[:, 2:]) + F.mse_loss(fixed_rect_pred[:, fixed_rects_full_idx], fixed_rects[:, fixed_rects_full_idx])
+
+                    reconstruction_loss = self.decoder_loss(privileged_obs_batch, priv_train_pred_teacher)
+                    # print(reconstruction_loss.item())
+
+                    # reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_train_pred_teacher)
                     loss += reconstruction_loss
                     # mean_reconstruction_loss += reconstruction_loss.item()
 
@@ -176,7 +315,7 @@ class PPO:
                     if DECODER:
                         with torch.no_grad():
                             adaptation_decoded = self.actor_critic.env_factor_decoder(latent_enc_student)
-                            adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
+                            adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
                     # loss += adaptation_reconstruction_loss
 
             # Gradient step
@@ -200,13 +339,14 @@ class PPO:
                     # Adaptation module gradient step
                     for epoch in range(PPO_Args.num_adaptation_module_substeps):
                         # with torch.enable_grad():
-                        adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+                        # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+                        adaptation_pred = self.actor_critic.get_latent_student(obs_history_batch)
                         
                         with torch.no_grad():
                             adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
                             if DECODER:
                                 adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
-                                adaptation_reconstruction_loss = F.mse_loss(privileged_obs_batch, adaptation_decoded)
+                                adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
 
                         adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
                         total_adap_loss = adaptation_loss

@@ -13,7 +13,7 @@ FFwriter = animation.FFMpegWriter
 # RECENT_MODEL = sorted(glob.glob(f"/common/home/dm1487/robotics_research/legged_manipulation/experimental/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
 RECENT_MODEL = sorted(glob.glob(f"./high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
 
-# RECENT_MODEL = "/home/dhruv/projects_dhruv/priv_blind_run/high_level_policy/models/teacher_student_variety_v1_good_result"
+# RECENT_MODEL = "/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_teacher_decoder/2023-01-14/high_level_train/091626.649973"
 source_folder = f"{RECENT_MODEL}/plots_eval"
 dest_folder = f"{RECENT_MODEL}/animations_eval"
 if not os.path.exists(dest_folder):
@@ -81,7 +81,7 @@ while True:
     updated_file_list = glob.glob(f"{source_folder}/*.pkl")
 
     # check for new files
-    for file_name in updated_file_list:
+    for file_name in list(reversed(sorted(updated_file_list, key=lambda x: int(Path(x).stem.split('.pkl')[0]))))[:5]:
         if file_name not in file_list:
             done = False
             # call the function when a new file is detected

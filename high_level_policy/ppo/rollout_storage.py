@@ -101,7 +101,6 @@ class RolloutStorage:
         batch_size = self.num_envs * self.num_transitions_per_env
         mini_batch_size = batch_size // num_mini_batches
         indices = torch.randperm(num_mini_batches*mini_batch_size, requires_grad=False, device=self.device)
-
         observations = self.observations.flatten(0, 1)
         privileged_obs = self.privileged_observations.flatten(0, 1)
         obs_history = self.observation_histories.flatten(0, 1)
