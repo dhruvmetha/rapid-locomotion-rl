@@ -145,7 +145,8 @@ class WorldAsset():
 
         self.base_assets = [AssetDef(asset, name, pos) for asset, name, pos in zip(gym_assets, asset_names, asset_pos)]
 
-        self.env_asset_ctr = torch.arange(0, 10, dtype=torch.long, device=self.device).repeat(self.num_envs, 1)
+        self.env_asset_ctr = torch.zeros(self.num_envs, self.asset_counts, 10, dtype=torch.long, device=self.device)
+        self.env_asset_ctr[:, :, :] = torch.arange(0, 10, dtype=torch.long, device=self.device)
         self.env_asset_bool = torch.zeros(self.num_envs, self.asset_counts, 1, dtype=torch.bool, device=self.device)
         self.all_train_ids = torch.arange(0, self.num_train_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
         self.all_eval_ids = torch.arange(self.num_train_envs, self.num_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
@@ -295,15 +296,18 @@ class WorldAsset():
                 fb_three_bool = [False, False, False]
                 bb_three_bool = [False, False, False]
                 
+                current_ctr = 0
 
                 for asset in asset_container:
                     actor_indices.append(self.gym.find_actor_index(env_handle, asset.name, gymapi.DOMAIN_SIM))
                     env_origins.append(self.env_origins[env_id])
                     assets_marked.append(asset.name)
+                    self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] = torch.arange(0, 10, dtype=torch.long, device=self.device)
 
-                    
+
                     if idx == random_idx:
-                        
+                        self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] += 10*current_ctr
+                        current_ctr += 1
                         if asset.name.startswith('fb_three_mov'):
                             if fixed_bp is not None:
                                 raise "should do movable first"
@@ -430,7 +434,7 @@ class WorldAsset():
         block_actor_handles = []
         ids_contact = []
         all_obs = torch.zeros((self.num_envs, 10*4), dtype=torch.float, device=self.device)
-        self.env_asset_ctr[:, :] = torch.arange(0, 10, dtype=torch.long, device=self.device)
+        # self.env_asset_ctr[:, :] = torch.arange(0, 10, dtype=torch.long, device=self.device)
         asset_keys = list(self.asset_idx_map.keys())
         # random.shuffle(asset_keys)
         for _, name in enumerate(asset_keys):
@@ -449,7 +453,7 @@ class WorldAsset():
                 movable_indicator = 1
 
             self.env_asset_bool[curr_env_ids, self.asset_idx_map[name], :] = ~(self.all_root_states[ids, 0] < -100).view(-1, 1)
-            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] += (torch.cat([torch.tensor([1, movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), self.all_root_states[ids, 3:7].clone(), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] += (torch.cat([torch.tensor([1, movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), self.all_root_states[ids, 3:7].clone(), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
             
             if self.train_eval_assets[name] and self.env_asset_bool[curr_env_ids[0], self.asset_idx_map[name]]:
                 if torch.linalg.norm(all_obs[curr_env_ids.view(-1, 1)[0], -8:]) > 0:
@@ -457,14 +461,14 @@ class WorldAsset():
                     quit()
 
             
-            block_contact_buf = (torch.linalg.norm(self.all_contact_forces[ids_contact, :2], dim=-1) > 1.).view(-1, 1)
+            block_contact_buf = (torch.linalg.norm(self.all_contact_forces[ids_contact, :2], dim=-1) > 0.5).view(-1, 1)
             self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] = (~block_contact_buf) * self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :]
             self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :] = self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] < self.contact_memory_time
             self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] += (1*self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
             
-            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids]] *= (self.variables['full_info'] | self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] *= (self.variables['full_info'] | self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
 
-            self.env_asset_ctr[curr_env_ids, :] += 10*(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1))
+            # self.env_asset_ctr[curr_env_ids, :] += 10*(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1))
 
         if not self.variables['full_info']:
             all_obs *= (self.reset_timer == 0).view(-1, 1)

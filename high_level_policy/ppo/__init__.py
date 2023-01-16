@@ -288,7 +288,7 @@ class Runner:
 
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
 
-                    if USE_LATENT:
+                    if False and USE_LATENT:
                         if (it > TEACHER_FORCING):
                             obs_history[:num_train_envs, -20:] = latent_enc_student[:]
                         else:
@@ -470,7 +470,7 @@ class Runner:
                             traced_script_adaptation_module = torch.jit.script(adaptation_module)
                         else:
                             
-                            x = torch.randn(1, ROLLOUT_HISTORY, 57, device='cpu')
+                            x = torch.randn(1, ROLLOUT_HISTORY, 37, device='cpu')
                             hidden = (torch.zeros(1, 1, 128,  device='cpu'), torch.zeros(1, 1, 128,  device='cpu'))
 
                             traced_script_adaptation_module = torch.jit.trace(adaptation_module, (x, hidden))
