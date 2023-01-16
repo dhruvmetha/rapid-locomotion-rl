@@ -34,7 +34,7 @@ class HighLevelControlWrapper():
         # self.num_privileged_obs += 24 # + 17
         self.obs_history_length = ROLLOUT_HISTORY
 
-        self.num_obs_history = self.obs_history_length * (self.num_obs+44)
+        self.num_obs_history = self.obs_history_length * (self.num_obs+24)
         self.test_mode = test
         self.hold_out = hold_out
 
@@ -215,14 +215,17 @@ class HighLevelControlWrapper():
         self.compute_observations()
         self.last_actions[:] = self.actions[:]
         
-        obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques, self.ll_env.dof_vel, torch.zeros(self.obs_buf.size(0), 20, device=self.device)), dim=-1)
+        # obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques, self.ll_env.dof_vel, torch.zeros(self.obs_buf.size(0), 20, device=self.device)), dim=-1)
+
+        obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques, self.ll_env.dof_vel), dim=-1)
+
 
         # print(obs_hist_buf.shape)
 
         # print('before', self.obs_history[0, -60:])
 
         # print(obs_hist_buf[0])
-        self.obs_history = torch.cat((self.obs_history[:, (self.num_obs+44):], obs_hist_buf), dim=-1)
+        self.obs_history = torch.cat((self.obs_history[:, (self.num_obs+24):], obs_hist_buf), dim=-1)
         # print('after', self.obs_history[0, -60:])
 
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }, self.rew_buf, self.reset_envs, self.extras

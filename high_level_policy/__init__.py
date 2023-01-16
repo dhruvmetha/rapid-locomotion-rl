@@ -18,7 +18,7 @@ TRAJ_IMAGE_FOLDER = f'traj_push_obs_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
 ROLLOUT_HISTORY = 100
 OCCUPANCY_GRID = False
 STUDENT_ENCODING = 5000
-TEACHER_FORCING = 2500
+TEACHER_FORCING = 0
 DECODER = True
 EVAL_RATIO = .90
 MAX_EPISODE_LENGTH = 15
@@ -47,7 +47,7 @@ elif exp == 'teacher_decoder':
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = True
-    TEACHER_FORCING = 2000
+    TEACHER_FORCING = 0
 elif exp == 'teacher_no_decoder':
     FULL_INFO = False
     DECODER = False
@@ -63,8 +63,8 @@ elif exp == 'student_decoder':
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = False
-    STUDENT_ENCODING = 3000
-    TEACHER_FORCING = 2000
+    # STUDENT_ENCODING = 3000
+    # TEACHER_FORCING = 2000
 elif exp == 'student_no_decoder':
     FULL_INFO = False
     DECODER = False
@@ -75,19 +75,19 @@ elif exp == 'student_decoder_0':
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = False
-    STUDENT_ENCODING = 0
-    TEACHER_FORCING = 2000
+    # STUDENT_ENCODING = 0
+    # TEACHER_FORCING = 2000
 elif exp == 'student_decoder_lstm':
     FULL_INFO = False
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = False
-    STUDENT_ENCODING = 3000
-    TEACHER_FORCING = 2000
+    # STUDENT_ENCODING = 3000
+    # TEACHER_FORCING = 2000
     LSTM_ADAPTATION = True
 
 wandb_config = {
-    "project":'legged_navigation', "group":'one_task_train_exp_9', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 and 1; much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test. Student encoding at 3000 iterations, teacher forcing for 2000 iterations"
+    "project":'legged_navigation', "group":'one_task_train_exp_12', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 and 1; much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test. Student encoding at 3000 iterations, teacher forcing for 2000 iterations"
 }
 
 task_inplay = f'task_{exp}'
@@ -132,7 +132,7 @@ class reward_scales:
     # step rewards
     distance_gs  = 0.
     velocity_gs = 0.
-    distance = -0.5      # 1 - 1/exp(distance to goal)
+    distance = -1.0     # 1 - 1/exp(distance to goal)
     time = -0.0 # -0.1
     action_rate = -0.00
     # ll_reset = -1.0
