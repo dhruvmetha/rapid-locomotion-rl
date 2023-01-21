@@ -13,7 +13,7 @@ FFwriter = animation.FFMpegWriter
 # RECENT_MODEL = sorted(glob.glob(f"/common/home/dm1487/robotics_research/legged_manipulation/experimental/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
 RECENT_MODEL = sorted(glob.glob(f"./high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
 
-# RECENT_MODEL = "/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_teacher_decoder/2023-01-14/high_level_train/091626.649973"
+# RECENT_MODEL = "/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_student_decoder_lstm/2023-01-18/high_level_train/212043.023492"
 source_folder = f"{RECENT_MODEL}/plots_eval"
 dest_folder = f"{RECENT_MODEL}/animations_eval"
 if not os.path.exists(dest_folder):
@@ -66,7 +66,7 @@ def on_new_file(tmp_img_path):
         last_patch.extend(frame)
     
     anim = animation.FuncAnimation(fig, animate, frames=patches, interval=10, repeat=False)
-    anim.save(f"{dest_folder}/{file_name}.mp4", writer = FFwriter(30))
+    anim.save(f"{dest_folder}/{file_name}.mp4", writer = FFwriter(5))
     plt.close()
     return True
 

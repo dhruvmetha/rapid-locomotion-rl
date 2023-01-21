@@ -105,7 +105,7 @@ class Runner:
 
         # init storage and model
         self.alg.init_storage(self.env.num_train_envs, self.num_steps_per_env, [self.env.num_obs],
-                              [self.env.num_privileged_obs], [self.env.num_obs_history], [self.env.num_actions])
+                              [self.env.num_privileged_obs], [self.env.num_obs_history], [self.env.num_actions], [HIDDEN_STATE_SIZE])
 
         self.tot_timesteps = 0
         self.tot_time = 0
@@ -132,6 +132,9 @@ class Runner:
         obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
         obs, privileged_obs, obs_history = obs.to(self.device), privileged_obs.to(self.device), obs_history.to(
             self.device)
+
+        adaptation_hidden_states = torch.zeros(self.env.num_envs, HIDDEN_STATE_SIZE).to(self.device)
+        
         self.alg.actor_critic.train()
 
         print(privileged_obs.shape)
@@ -167,6 +170,7 @@ class Runner:
             # if self.current_learning_iteration+it % 5 == 0:
                 # eval_expert = True
 
+
             
             
             with torch.inference_mode():
@@ -180,17 +184,15 @@ class Runner:
 
                     
                     ### main policy calls
-                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student)), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs],obs_history[:num_train_envs], student=(it > complete_student))
+                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student), next_hidden_states), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs], obs_history[:num_train_envs], adaptation_hidden_states[:num_train_envs, :], student=(it > complete_student))
                     
                     priv_train_pred = priv_train_pred_teacher
                     latent_enc = latent_enc_teacher
-
-                    
                     
                     if eval_expert:
                         (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
                     else:
-                        (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:])
+                        (priv_obs_pred, latent_pred, next_hidden_states_eval), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:], adaptation_hidden_states[num_train_envs:, :])
                         
                     if USE_LATENT and DECODER:
                         if it >= 0:
@@ -201,14 +203,14 @@ class Runner:
                             patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
                             
                             for i in range(4):
-                                j = i*10 + 2
+                                j = i*7 + 2
 
                                 pos, pos_pred = privileged_obs[self.random_eval_anim_env][j:j+2], priv_obs_pred[self.random_eval_anim_env][j:j+2]
-                                rot, rot_pred = privileged_obs[self.random_eval_anim_env][j+2:j+6], priv_obs_pred[self.random_eval_anim_env][j+2:j+6]
-                                size, size_pred = privileged_obs[self.random_eval_anim_env][j+6:j+8], priv_obs_pred[self.random_eval_anim_env][j+6:j+8]
+                                angle, angle_pred = torch.rad2deg(privileged_obs[self.random_eval_anim_env][j+2:j+3]), torch.rad2deg(priv_obs_pred[self.random_eval_anim_env][j+2:j+3])
+                                size, size_pred = privileged_obs[self.random_eval_anim_env][j+3:j+5], priv_obs_pred[self.random_eval_anim_env][j+3:j+5]
   
-                                angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
-                                angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
+                                # angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
+                                # angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
                                 block_color = 'red'
                                 if privileged_obs[self.random_eval_anim_env][j-1] == 1:
@@ -234,16 +236,16 @@ class Runner:
 
 
                             for i in range(4):
-                                j = i*10 + 2
+                                j = i*7 + 2
 
                                 pos, pos_pred = privileged_obs[self.random_anim_env][j:j+2], priv_train_pred[self.random_anim_env][j:j+2]
-                                rot, rot_pred = privileged_obs[self.random_anim_env][j+2:j+6], priv_train_pred[self.random_anim_env][j+2:j+6]
-                                size, size_pred = privileged_obs[self.random_anim_env][j+6:j+8], priv_train_pred[self.random_anim_env][j+6:j+8]
+                                angle, angle_pred = torch.rad2deg(privileged_obs[self.random_anim_env][j+2:j+3]), torch.rad2deg(priv_train_pred[self.random_anim_env][j+2:j+3])
+                                size, size_pred = privileged_obs[self.random_anim_env][j+3:j+5], priv_train_pred[self.random_anim_env][j+3:j+5]
                                 # print(rot_pred)
 
 
-                                angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
-                                angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
+                                # angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
+                                # angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
 
                                 block_color = 'red'
                                 # print(j-1, privileged_obs[0][j-1])
@@ -285,8 +287,12 @@ class Runner:
                     # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
 
                     
-
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
+                    
+                    adaptation_hidden_states[:num_train_envs, :] = next_hidden_states
+                    adaptation_hidden_states[num_train_envs:, :] = next_hidden_states_eval
+
+                    adaptation_hidden_states[dones, :] = 0.
 
                     if False and USE_LATENT:
                         if (it > TEACHER_FORCING):
@@ -471,7 +477,7 @@ class Runner:
                         else:
                             
                             x = torch.randn(1, ROLLOUT_HISTORY, 37, device='cpu')
-                            hidden = (torch.zeros(1, 1, 128,  device='cpu'), torch.zeros(1, 1, 128,  device='cpu'))
+                            hidden = torch.zeros(1, 1, HIDDEN_STATE_SIZE,  device='cpu')
 
                             traced_script_adaptation_module = torch.jit.trace(adaptation_module, (x, hidden))
                         

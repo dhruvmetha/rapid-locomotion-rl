@@ -19,11 +19,12 @@ class RolloutStorage:
             self.action_mean = None
             self.action_sigma = None
             self.env_bins = None
+            self.adaptation_hidden_states = None
 
         def clear(self):
             self.__init__()
 
-    def __init__(self, num_envs, num_transitions_per_env, obs_shape, privileged_obs_shape, obs_history_shape, actions_shape, device='cpu'):
+    def __init__(self, num_envs, num_transitions_per_env, obs_shape, privileged_obs_shape, obs_history_shape, actions_shape, adaptation_hidden_sizes, device='cpu'):
 
         self.device = device
 
@@ -31,11 +32,13 @@ class RolloutStorage:
         self.privileged_obs_shape = privileged_obs_shape
         self.obs_history_shape = obs_history_shape
         self.actions_shape = actions_shape
+        self.adaptation_hidden_sizes = adaptation_hidden_sizes
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
         self.privileged_observations = torch.zeros(num_transitions_per_env, num_envs, *privileged_obs_shape, device=self.device)
         self.observation_histories = torch.zeros(num_transitions_per_env, num_envs, *obs_history_shape, device=self.device)
+        self.adaptation_hidden_states = torch.zeros(num_transitions_per_env, num_envs, *self.adaptation_hidden_sizes, device=self.device)
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.actions = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.dones = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
@@ -60,6 +63,7 @@ class RolloutStorage:
         self.observations[self.step].copy_(transition.observations)
         self.privileged_observations[self.step].copy_(transition.privileged_observations)
         self.observation_histories[self.step].copy_(transition.observation_histories)
+        self.adaptation_hidden_states[self.step].copy_(transition.adaptation_hidden_states)
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
@@ -104,6 +108,7 @@ class RolloutStorage:
         observations = self.observations.flatten(0, 1)
         privileged_obs = self.privileged_observations.flatten(0, 1)
         obs_history = self.observation_histories.flatten(0, 1)
+        adaptation_hidden_states = self.adaptation_hidden_states.flatten(0, 1)
         critic_observations = observations
 
         actions = self.actions.flatten(0, 1)
@@ -133,9 +138,10 @@ class RolloutStorage:
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
+                adaptation_hidden_states_batch = adaptation_hidden_states[batch_idx]
                 # env_bins_batch = old_env_bins[batch_idx]
                 yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, None, None # env_bins_batch
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, None, None # env_bins_batch
 
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):

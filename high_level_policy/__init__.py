@@ -19,14 +19,20 @@ ROLLOUT_HISTORY = 100
 OCCUPANCY_GRID = False
 STUDENT_ENCODING = 5000
 TEACHER_FORCING = 0
+ENCODER = True
 DECODER = True
 EVAL_RATIO = .90
 MAX_EPISODE_LENGTH = 15
 FULL_INFO = True
 EVAL_EXPERT = True
-ADAPTIVE_SAMPLE_ENVS = False
+ADAPTIVE_SAMPLE_ENVS = True
 LSTM_ADAPTATION = False
 SHARED = False
+HIDDEN_STATE_SIZE = 1024
+SKIP_ADAPTATION_ITER = 100
+ONE_TOUCH_MAP = True
+LATENT_DIM_SIZE = 20
+PER_RECT = 7
 
 experiment_runs = ['pure_rl', 'full_info_decoder', 'teacher_decoder', 'student_decoder', 'teacher_no_decoder', 'student_no_decoder', 'student_decoder_0', 'student_decoder_lstm']
 exp = experiment_runs[int(os.environ.get('RUN_TYPE'))]
@@ -87,11 +93,10 @@ elif exp == 'student_decoder_lstm':
     LSTM_ADAPTATION = True
 
 wandb_config = {
-    "project":'legged_navigation', "group":'one_task_train_exp_12', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 and 1; much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test. Student encoding at 3000 iterations, teacher forcing for 2000 iterations"
+    "project":'legged_navigation', "group":'one_simple_task_train_exp_8', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 (1 type); much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, exploration: -0.1; history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test."
 }
 
 task_inplay = f'task_{exp}'
-
 
 # RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
 # EVAL_MODEL_PATH = RECENT_MODEL
@@ -99,8 +104,6 @@ task_inplay = f'task_{exp}'
 # task_eval_inplay = ['task_1']
 
 # BLOCK
-
-
 
 class world_cfg:
     CUSTOM_BLOCK = True
@@ -141,7 +144,7 @@ class reward_scales:
     backward_vel = -0.001
     collision = -0.01
     zero_velocity = -0.001
-
+    exploration = -0.1
 
 # def euler_from_quaternion(x, y, z, w):
 #     import math

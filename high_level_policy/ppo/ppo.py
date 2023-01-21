@@ -11,7 +11,7 @@ from high_level_policy.ppo import ActorCritic
 from high_level_policy.ppo import RolloutStorage
 from high_level_policy.ppo import caches
 
-from high_level_policy import USE_LATENT, DECODER
+from high_level_policy import USE_LATENT, ENCODER, DECODER, SKIP_ADAPTATION_ITER, PER_RECT
 
 torch.manual_seed(42)
 
@@ -53,9 +53,9 @@ class PPO:
         self.iters = 0
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape, obs_history_shape,
-                     action_shape):
+                     action_shape, adaptation_hidden_size):
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape,
-                                      obs_history_shape, action_shape, self.device)
+                                      obs_history_shape, action_shape, adaptation_hidden_size, self.device)
 
     def test_mode(self):
         self.actor_critic.test()
@@ -63,14 +63,15 @@ class PPO:
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, privileged_obs, obs_history, student=False):
+    def act(self, obs, privileged_obs, obs_history, adaptation_hs, student=False):
         # Compute the actions and values
-        priv_latent, actions = self.actor_critic.act(obs, privileged_obs, student=student, observation_history=obs_history)
+        priv_latent, actions = self.actor_critic.act(obs, privileged_obs, student=student, observation_history=obs_history, adaptation_hs=adaptation_hs)
         self.transition.actions = actions.detach()
         self.transition.values = self.actor_critic.evaluate(obs, privileged_obs, student=student, observation_history=obs_history).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()
         self.transition.action_sigma = self.actor_critic.action_std.detach()
+        self.transition.adaptation_hidden_states = adaptation_hs.detach()
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = obs
@@ -105,22 +106,35 @@ class PPO:
         
         # reconstruction_loss = torch.tensor(0).float().to(self.device)
 
-        contact_gt = gt[:, 0::10]
-        movable_gt = gt[:, 1::10]
+        # contact_gt = gt[:, 0::10]
+        # movable_gt = gt[:, 1::10]
 
-        contact_pred = F.sigmoid(pred[:, 0::10])
-        movable_pred = F.sigmoid(pred[:, 1::10])
+        # contact_pred = F.sigmoid(pred[:, 0::10])
+        # movable_pred = F.sigmoid(pred[:, 1::10])
 
-        local_loss = lambda inp, tar : F.binary_cross_entropy(inp, tar)
+        # local_loss = lambda inp, tar : F.binary_cross_entropy(inp, tar)
 
         # reconstruction_loss += local_loss(contact_pred, contact_gt) + local_loss(movable_pred, movable_gt)
+
+        per_rect = PER_RECT
         
-        extract_idx = [torch.arange(0, 10, dtype=torch.long, device=self.device), torch.arange(10, 20, dtype=torch.long, device=self.device), torch.arange(20, 30, dtype=torch.long, device=self.device), torch.arange(30, 40, dtype=torch.long, device=self.device)]
+        extract_idx = [torch.arange(per_rect*0, per_rect*1, dtype=torch.long, device=self.device), torch.arange(per_rect*1, per_rect*2, dtype=torch.long, device=self.device), torch.arange(per_rect*2, per_rect*3, dtype=torch.long, device=self.device), torch.arange(per_rect*3, per_rect*4, dtype=torch.long, device=self.device)]
         reconstruction_loss = None
+        # loss = None
         for i in extract_idx:
-            loss = F.binary_cross_entropy(F.sigmoid(pred[:, i[0]]), gt[:, i[0]]) 
+            
+            loss = F.binary_cross_entropy(F.sigmoid(pred[:, i[0]]), gt[:, i[0]])
             loss += F.binary_cross_entropy(F.sigmoid(pred[:, i[1]]), gt[:, i[1]])
+            
             loss += F.mse_loss(pred[:, i[2:]], gt[:, i[2:]])
+
+            # if (gt[0, i[0]] == 1):
+            #     print("contact", pred[0, i[0]], gt[0, i[0]])
+            #     print("movable", pred[0, i[1]], gt[0, i[1]]) 
+            #     print("rect", pred[0, i[2:]], gt[0, i[2:]]) 
+            #     print("loss", loss.item())
+
+
 
             if reconstruction_loss is not None:
                 reconstruction_loss += loss
@@ -197,9 +211,12 @@ class PPO:
 
         generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch, masks_batch, env_bins_batch in generator:
+            old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, masks_batch, env_bins_batch in generator:
 
-            ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student)), _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
+            self.optimizer.zero_grad()
+
+
+            ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student), _), _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch, adaptation_hs=adaptation_hidden_states_batch)
             
             actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
             value_batch = self.actor_critic.evaluate(critic_obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
@@ -250,76 +267,33 @@ class PPO:
                 mean_entropy_loss += PPO_Args.entropy_coef * entropy_batch.mean().item()
 
             if USE_LATENT:
-                if DECODER:
-                    
-                    # fixed_rects_full_idx = torch.cat([torch.arange(2, 10, dtype=torch.long, device=self.device), torch.arange(12, 20, dtype=torch.long, device=self.device), torch.arange(22, 30, dtype=torch.long, device=self.device)])
-
-                    # bs, _ = privileged_obs_batch.shape
-
-                    # movable_rects_idx = torch.arange(0, 10, dtype=torch.long, device=self.device).repeat(bs, 1)
-                    # movable_rects = torch.zeros(bs, 10, device=self.device)
-                    # fixed_rects_idx = torch.arange(0, 30, dtype=torch.long, device=self.device).repeat(bs, 1)
-                    # fixed_rects = torch.zeros(bs, 30, device=self.device)
-                    # contact_mask = privileged_obs_batch[:, 0::10] == 1
-                    # movable_mask = privileged_obs_batch[:, 1::10] == 1
-                    # movable_contact = contact_mask * movable_mask
-                    # ba, ba_idx = movable_contact.nonzero(as_tuple=True)
-                    
-                    # if ba.size(0) > 0:
-                    #     movable_rects_idx = movable_rects_idx[ba, :] + (ba_idx * 10).view(-1, 1)
-                    #     movable_rects[ba, :] = privileged_obs_batch[ba.view(-1, 1), movable_rects_idx]
-
-                    # fixed_contact = contact_mask * (~movable_mask)
-                    # ba, ba_idx = fixed_contact.nonzero(as_tuple=True)
-                    # if ba.size(0) > 0:
-                    #     fixed_rects_idx = fixed_rects_idx[ba, :] + (ba_idx * 10).view(-1, 1)
-                    #     fixed_rects[ba, :] = privileged_obs_batch[ba.view(-1, 1), fixed_rects_idx]
-
-
-                    # movable_rect_pred = priv_train_pred_teacher[:, :10]
-                    # fixed_rect_pred =  priv_train_pred_teacher[:, 10:]
-
-                    # contact_movable_rect_gt = movable_rects[:, 0]
-                    # moving_movable_rect_gt = movable_rects[:, 1]
-
-                    # contact_fixed_rect_gt = fixed_rects[:, 0]
-                    # moving_fixed_rect_gt = fixed_rects[:, 1]
-                    
-                    # contact_movable_pred = torch.nn.Sigmoid(movable_rect_pred[:, 0])
-                    # moving_movable_pred = torch.nn.Sigmoid(movable_rect_pred[:, 1])
-                    
-                    # contact_fixed_pred = torch.nn.Sigmoid(fixed_rect_pred[:, 0::10])
-                    # moving_fixed_pred = torch.nn.Sigmoid(fixed_rect_pred[:, 1::10])
-
-                    # local_loss = lambda inp, tar : F.binary_cross_entropy(inp, tar)
-
-
-                    # reconstruction_loss = local_loss(contact_movable_pred, contact_movable_rect_gt) + local_loss(moving_movable_pred, moving_movable_rect_gt) + local_loss(contact_fixed_pred, contact_fixed_rect_gt) + local_loss(moving_fixed_pred, moving_fixed_rect_gt)
-
-                    # reconstruction_loss += F.mse_loss(movable_rect_pred[:, 2:], movable_rects[:, 2:]) + F.mse_loss(fixed_rect_pred[:, fixed_rects_full_idx], fixed_rects[:, fixed_rects_full_idx])
-
+                if ENCODER and DECODER:
                     reconstruction_loss = self.decoder_loss(privileged_obs_batch, priv_train_pred_teacher)
-                    # print(reconstruction_loss.item())
-
-                    # reconstruction_loss = F.mse_loss(privileged_obs_batch, priv_train_pred_teacher)
                     loss += reconstruction_loss
-                    # mean_reconstruction_loss += reconstruction_loss.item()
 
                 if student:
-                    with torch.no_grad():
-                        adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
-                    # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-                    adaptation_loss = F.mse_loss(latent_enc_student, adaptation_target)
-                    loss += adaptation_loss
-                    
-                    if DECODER:
+                    if ENCODER:
                         with torch.no_grad():
-                            adaptation_decoded = self.actor_critic.env_factor_decoder(latent_enc_student)
-                            adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
+                            adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+                        if DECODER:
+                            with torch.no_grad():
+                                adaptation_decoded = self.actor_critic.env_factor_decoder(latent_enc_student)
+                                adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
+                        adaptation_loss = F.mse_loss(latent_enc_student, adaptation_target)
+                        loss += adaptation_loss
+                    else:
+                        adaptation_target = privileged_obs_batch
+                        adaptation_loss = self.decoder_loss(adaptation_target, latent_enc_student)
+                        loss += adaptation_loss
+                        # with torch.no_grad():
+                        #     adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, latent_enc_student)
+                    # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+                    
+                    
+                    
                     # loss += adaptation_reconstruction_loss
 
             # Gradient step
-            self.optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(self.actor_critic.parameters(), PPO_Args.max_grad_norm)
             self.optimizer.step()
@@ -328,38 +302,47 @@ class PPO:
             mean_surrogate_loss += surrogate_loss.item()
 
             if USE_LATENT:
-                if DECODER:
+                if ENCODER and DECODER:
                     mean_reconstruction_loss += reconstruction_loss.item()
                     if student:
                         mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+                # if DECODER:
+                #     mean_reconstruction_loss += reconstruction_loss.item()
+                #     if student:
+                #         mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
                 if student:        
                     mean_adaptation_module_loss += adaptation_loss.item()
 
-                if not student:
+                if not student and self.iters > SKIP_ADAPTATION_ITER:
                     # Adaptation module gradient step
                     for epoch in range(PPO_Args.num_adaptation_module_substeps):
                         # with torch.enable_grad():
                         # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-                        adaptation_pred = self.actor_critic.get_latent_student(obs_history_batch)
-                        
-                        with torch.no_grad():
-                            adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
-                            if DECODER:
-                                adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
-                                adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
+                        self.adaptation_module_optimizer.zero_grad()
 
-                        adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+                        adaptation_pred, _ = self.actor_critic.get_latent_student(obs_history_batch, hidden_states=adaptation_hidden_states_batch)
+                        if ENCODER:
+                            with torch.no_grad():
+                                adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+                                if DECODER:
+                                    adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
+                                    adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
+                            adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+                        else:
+                            adaptation_target = privileged_obs_batch
+                            adaptation_loss = self.decoder_loss(adaptation_target, adaptation_pred)
+                            # adaptation_reconstruction_loss = F.mse_loss(adaptation_pred, adaptation_target)
+                                    
                         total_adap_loss = adaptation_loss
                         
                         # if DECODER:
                         #     total_adap_loss += (adaptation_reconstruction_loss)
 
-                        self.adaptation_module_optimizer.zero_grad()
                         total_adap_loss.backward()
                         self.adaptation_module_optimizer.step()
 
                         mean_adaptation_module_loss += adaptation_loss.item()
-                        if DECODER:
+                        if ENCODER and DECODER:
                             mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
                         
                 # else:

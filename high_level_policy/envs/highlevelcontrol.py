@@ -28,7 +28,7 @@ class HighLevelControlWrapper():
         self.num_actions = 3
         self.train_ratio = train_ratio
         self.max_episode_length_s = MAX_EPISODE_LENGTH
-        self.num_privileged_obs = 40 # 13 if world_cfg.fixed_block.add_to_obs else 9
+        self.num_privileged_obs = 28 # 13 if world_cfg.fixed_block.add_to_obs else 9
         # self.num_obs = (13 + self.num_privileged_obs) if not USE_LATENT else 13
         self.num_obs = (13) if not USE_LATENT else 13
         # self.num_privileged_obs += 24 # + 17
@@ -651,4 +651,10 @@ class HighLevelControlWrapper():
 
     def _reward_zero_velocity(self):
         return ((torch.linalg.norm(self.base_lin_vel, dim=-1) + torch.linalg.norm(self.base_ang_vel, dim=-1)) < 0.2) * 1.0
+
+
+    def _reward_exploration(self):
+        return (torch.linalg.norm(self.obs_history[:, -(37*4):][:, :2] - self.obs_history[:, -37:][:, :2], dim=-1) < 0.05) * 1.0
+        
+         
     
