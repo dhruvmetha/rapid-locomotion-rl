@@ -3,6 +3,14 @@
 import torch
 
 from mini_gym_learn.utils import split_and_pad_trajectories
+from high_level_policy import SAVE_ADAPTATION_DATA, ROLLOUT_HISTORY, SAVE_ADAPTATION_DATA_FILE_NAME
+from ml_logger import logger
+from pathlib import Path
+from datetime import datetime
+import pickle
+import time
+import numpy as np
+
 
 class RolloutStorage:
     class Transition:
@@ -20,25 +28,31 @@ class RolloutStorage:
             self.action_sigma = None
             self.env_bins = None
             self.adaptation_hidden_states = None
+            self.latent_teacher_states = None
+            self.full_seen_world = None
 
         def clear(self):
             self.__init__()
 
-    def __init__(self, num_envs, num_transitions_per_env, obs_shape, privileged_obs_shape, obs_history_shape, actions_shape, adaptation_hidden_sizes, device='cpu'):
+    def __init__(self, num_envs, num_transitions_per_env, obs_shape, privileged_obs_shape, obs_history_shape, actions_shape, adaptation_hidden_sizes, latent_size, device='cpu'):
 
         self.device = device
 
         self.obs_shape = obs_shape
         self.privileged_obs_shape = privileged_obs_shape
+        self.full_seen_world_size = privileged_obs_shape
         self.obs_history_shape = obs_history_shape
         self.actions_shape = actions_shape
         self.adaptation_hidden_sizes = adaptation_hidden_sizes
+        self.latent_size = latent_size
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
         self.privileged_observations = torch.zeros(num_transitions_per_env, num_envs, *privileged_obs_shape, device=self.device)
+        self.full_seen_world = torch.zeros(num_transitions_per_env, num_envs, *privileged_obs_shape, device=self.device)
         self.observation_histories = torch.zeros(num_transitions_per_env, num_envs, *obs_history_shape, device=self.device)
         self.adaptation_hidden_states = torch.zeros(num_transitions_per_env, num_envs, *self.adaptation_hidden_sizes, device=self.device)
+        self.latent_teacher_states = torch.zeros(num_transitions_per_env, num_envs, *self.latent_size, device=self.device)
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.actions = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.dones = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
@@ -62,8 +76,10 @@ class RolloutStorage:
             raise AssertionError("Rollout buffer overflow")
         self.observations[self.step].copy_(transition.observations)
         self.privileged_observations[self.step].copy_(transition.privileged_observations)
+        self.full_seen_world[self.step].copy_(transition.full_seen_world)
         self.observation_histories[self.step].copy_(transition.observation_histories)
         self.adaptation_hidden_states[self.step].copy_(transition.adaptation_hidden_states)
+        self.latent_teacher_states[self.step].copy_(transition.latent_teacher_states)
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
@@ -74,7 +90,29 @@ class RolloutStorage:
         # self.env_bins[self.step].copy_(transition.env_bins.view(-1, 1))
         self.step += 1
 
-    def clear(self):
+    def clear(self, save=False):
+        # saves the observations, privileged_observations, observation_histories, actions, dones to a file using pickle
+        if save and SAVE_ADAPTATION_DATA:
+            # create a dictionary of the data to save
+            # print('saving data')
+            data = {
+                'observations': self.observations.cpu().numpy(),
+                'privileged_observations': self.privileged_observations.cpu().numpy(),
+                'observation_histories': self.observation_histories[:, :, -(self.observation_histories.shape[1]//ROLLOUT_HISTORY):].cpu().numpy(),
+                'full_seen_world': self.full_seen_world.cpu().numpy(),
+                'dones': self.dones.cpu().numpy()
+            }
+            
+            data_path = Path(f'/common/users/dm1487/legged_manipulation_data/rollout_data/{SAVE_ADAPTATION_DATA_FILE_NAME}')
+
+            # make directory `data_path` if it doesn't exist
+            data_path.mkdir(parents=True, exist_ok=True)
+
+            np.savez_compressed(data_path/f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz', **data)
+
+            # # save data to file using timestamp as name in `data_path` folder using pickle
+            # with open(data_path / f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pkl', 'wb') as f:
+            #     pickle.dump(data, f)
         self.step = 0
 
     def compute_returns(self, last_values, gamma, lam):
@@ -104,11 +142,13 @@ class RolloutStorage:
     def mini_batch_generator(self, num_mini_batches, num_epochs=8):
         batch_size = self.num_envs * self.num_transitions_per_env
         mini_batch_size = batch_size // num_mini_batches
+        # print(mini_batch_size)
         indices = torch.randperm(num_mini_batches*mini_batch_size, requires_grad=False, device=self.device)
         observations = self.observations.flatten(0, 1)
         privileged_obs = self.privileged_observations.flatten(0, 1)
         obs_history = self.observation_histories.flatten(0, 1)
         adaptation_hidden_states = self.adaptation_hidden_states.flatten(0, 1)
+        latent_teacher_states = self.latent_teacher_states.flatten(0, 1)
         critic_observations = observations
 
         actions = self.actions.flatten(0, 1)
@@ -139,6 +179,7 @@ class RolloutStorage:
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
                 adaptation_hidden_states_batch = adaptation_hidden_states[batch_idx]
+                latent_teacher_states_batch = latent_teacher_states[batch_idx]
                 # env_bins_batch = old_env_bins[batch_idx]
                 yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, None, None # env_bins_batch

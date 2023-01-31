@@ -6,33 +6,31 @@ import os
 from tqdm import tqdm 
 from pathlib import Path
 import time
-from high_level_play import task_inplay
 FFwriter = animation.FFMpegWriter
 
 
-# RECENT_MODEL = sorted(glob.glob(f"/common/home/dm1487/robotics_research/legged_manipulation/experimental/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
-RECENT_MODEL = sorted(glob.glob(f"./high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
-
-# RECENT_MODEL = "/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_teacher_decoder/2023-01-27/high_level_train/210752.597531"
+RECENT_MODEL = sorted(glob.glob("./indep_model/results/*/*"), key=os.path.getmtime)[-1]
+# RECENT_MODEL = '/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/indep_model/results/transformer_250_2048/2023-01-30_08-42-28'
+print(RECENT_MODEL)
 source_folder = f"{RECENT_MODEL}/plots"
 dest_folder = f"{RECENT_MODEL}/animations"
 if not os.path.exists(dest_folder):
     os.makedirs(dest_folder)
 
 
-def on_new_file(tmp_img_path):
+def on_new_file(tmp_img_path, save_to=None):
 
     file_name = Path(tmp_img_path).stem
     # if os.path.exists(f"{dest_folder}/{file_name}.mp4"):
     #     continue
-    fig, ax = plt.subplots(2, 2, figsize=(24, 24))
-    ax = ax.flatten()
+    fig, axes = plt.subplots(2, 2, figsize=(24, 24))
+    ax = axes.flatten()
 
     try:
-
         with open(tmp_img_path, 'rb') as f:
             patches = pickle.load(f)
     except:
+        plt.close()
         return False
     
     last_patch = []
@@ -45,7 +43,7 @@ def on_new_file(tmp_img_path):
                 except:
                     pass
             last_patch.clear()
-
+        
         robot, robot_1, robot_2, robot_3 = frame[0], frame[1], frame[2], frame[3]
 
         ax[0].add_patch(robot)
@@ -65,12 +63,16 @@ def on_new_file(tmp_img_path):
 
             ax[1].add_patch(frame[j+3])
             ax[2].add_patch(frame[j+4])
+
             ax[3].add_patch(frame[j+5])
 
         last_patch.extend(frame)
     
     anim = animation.FuncAnimation(fig, animate, frames=patches, interval=10, repeat=False)
-    anim.save(f"{dest_folder}/{file_name}.mp4", writer = FFwriter(10))
+    if save_to is None:
+        anim.save(f"{dest_folder}/{file_name}.mp4", writer = FFwriter(5))
+    else:
+        anim.save(f"{save_to}/{file_name}.mp4", writer = FFwriter(5))
     plt.close()
     return True
 
@@ -82,11 +84,11 @@ while True:
     if not os.path.exists(source_folder):
         time.sleep(5)
         continue
-    updated_file_list = glob.glob(f"{source_folder}/*.pkl")
+    updated_file_list = sorted(glob.glob(f"{source_folder}/*.pkl"), key= lambda x: int(x.split('/')[-1].split('.')[0].split('_')[-1]))[::-1][:10]
     # print(updated_file_list)
 
     # check for new files
-    for file_name in list(reversed(sorted(updated_file_list, key=lambda x: int(Path(x).stem.split('.pkl')[0]))))[:5]:
+    for file_name in list(updated_file_list):
         if file_name not in file_list:
             done = False
             # call the function when a new file is detected

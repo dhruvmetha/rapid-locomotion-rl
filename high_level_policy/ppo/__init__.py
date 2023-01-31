@@ -103,9 +103,15 @@ class Runner:
         self.alg = PPO(actor_critic, device=self.device)
         self.num_steps_per_env = RunnerArgs.num_steps_per_env
 
+
+        if ENCODER:
+            latent_size = LATENT_DIM_SIZE
+        else:
+            latent_size = PER_RECT * 2
+
         # init storage and model
         self.alg.init_storage(self.env.num_train_envs, self.num_steps_per_env, [self.env.num_obs],
-                              [self.env.num_privileged_obs], [self.env.num_obs_history], [self.env.num_actions], [HIDDEN_STATE_SIZE])
+                              [self.env.num_privileged_obs], [self.env.num_obs_history], [self.env.num_actions], [HIDDEN_STATE_SIZE], [latent_size])
 
         self.tot_timesteps = 0
         self.tot_time = 0
@@ -134,6 +140,8 @@ class Runner:
             self.device)
 
         adaptation_hidden_states = torch.zeros(self.env.num_envs, HIDDEN_STATE_SIZE).to(self.device)
+        latent_size = LATENT_DIM_SIZE if (USE_LATENT and ENCODER) else PER_RECT * 2 
+        latent_teacher_state = torch.zeros(self.env.num_envs, latent_size).to(self.device)
         
         self.alg.actor_critic.train()
 
@@ -169,12 +177,11 @@ class Runner:
             # Rollout
             # if self.current_learning_iteration+it % 5 == 0:
                 # eval_expert = True
-
-
-            
             
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
+
+                    full_seen_world = self.env.full_seen_world
 
                     pos_rob, rot_rob = obs[self.random_anim_env, :2], obs[self.random_anim_env, 2:6]
                     angle_rob = torch.rad2deg(torch.atan2(2.0*(rot_rob[0]*rot_rob[1] + rot_rob[3]*rot_rob[2]), 1. - 2.*(rot_rob[1]*rot_rob[1] + rot_rob[2]*rot_rob[2])))
@@ -184,10 +191,12 @@ class Runner:
 
                     
                     ### main policy calls
-                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student), next_hidden_states), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs], obs_history[:num_train_envs], adaptation_hidden_states[:num_train_envs, :], student=(it > complete_student))
+                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student), next_hidden_states), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs], obs_history[:num_train_envs], adaptation_hidden_states[:num_train_envs, :], latent_teacher_state[:num_train_envs, :], full_seen_world[:num_train_envs, :], rollout=True, student=(it > complete_student))
                     
                     priv_train_pred = priv_train_pred_teacher
                     latent_enc = latent_enc_teacher
+
+                    next_hidden_states_eval = None
                     
                     if eval_expert:
                         (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
@@ -198,71 +207,73 @@ class Runner:
                         if it >= 0:
 
                             patch_set = []
-                            patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588, 0.22]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            
-                            for i in range(4):
-                                j = i*7 + 2
 
-                                pos, pos_pred = privileged_obs[self.random_eval_anim_env][j:j+2], priv_obs_pred[self.random_eval_anim_env][j:j+2]
-                                angle, angle_pred = torch.rad2deg(privileged_obs[self.random_eval_anim_env][j+2:j+3]), torch.rad2deg(priv_obs_pred[self.random_eval_anim_env][j+2:j+3])
-                                size, size_pred = privileged_obs[self.random_eval_anim_env][j+3:j+5], priv_obs_pred[self.random_eval_anim_env][j+3:j+5]
-  
-                                # angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
-                                # angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
+                            for _ in range(4):
+                                patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588/2, 0.22/2]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                            
+                            for i in range(2):
+                                j = i*PER_RECT + 2
+
+                                pos, pos_pred, pos_fsw = privileged_obs[self.random_eval_anim_env][j:j+2], priv_obs_pred[self.random_eval_anim_env][j:j+2], full_seen_world[self.random_eval_anim_env][j:j+2]
+
+                                angle, angle_pred, angle_fsw = torch.rad2deg(privileged_obs[self.random_eval_anim_env][j+2:j+3]), torch.rad2deg(priv_obs_pred[self.random_eval_anim_env][j+2:j+3]), full_seen_world[self.random_eval_anim_env][j+2:j+3]
+                                
+                                size, size_pred, size_fsw = privileged_obs[self.random_eval_anim_env][j+3:j+5], priv_obs_pred[self.random_eval_anim_env][j+3:j+5], full_seen_world[self.random_eval_anim_env][j+3:j+5]
 
                                 block_color = 'red'
                                 if privileged_obs[self.random_eval_anim_env][j-1] == 1:
                                     block_color = 'yellow'
+
+                                fsw_block_color = 'red'
+                                if full_seen_world[self.random_eval_anim_env][j-1] == 1:
+                                    fsw_block_color = 'yellow'
                                 
                                 pred_block_color = 'blue'
                                 if priv_obs_pred[self.random_eval_anim_env][j-1] > 0.8:
                                     pred_block_color = 'orange'
 
-                                patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
-                                patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
-                                patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
-                                patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
+                                for _ in range(2):
+                                    patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
+                                    
+                                    patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
+
+                                    patch_set.append(pch.Rectangle(pos_fsw.cpu() - size_fsw.cpu()/2, *(size_fsw.cpu()), angle=angle_fsw.cpu(), rotation_point='center', facecolor=fsw_block_color, label=f'seen_mov_{i}'))
                             
                             patches.append(patch_set)
 
 
                             patch_set_eval = []
 
-                            patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
-                            patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                            for _ in range(4):
+                                patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                            
+                            for i in range(2):
+                                j = i*PER_RECT + 2
 
-
-                            for i in range(4):
-                                j = i*7 + 2
-
-                                pos, pos_pred = privileged_obs[self.random_anim_env][j:j+2], priv_train_pred[self.random_anim_env][j:j+2]
-                                angle, angle_pred = torch.rad2deg(privileged_obs[self.random_anim_env][j+2:j+3]), torch.rad2deg(priv_train_pred[self.random_anim_env][j+2:j+3])
-                                size, size_pred = privileged_obs[self.random_anim_env][j+3:j+5], priv_train_pred[self.random_anim_env][j+3:j+5]
-                                # print(rot_pred)
-
-
-                                # angle = torch.rad2deg(torch.atan2(2.0*(rot[0]*rot[1] + rot[3]*rot[2]), 1. - 2.*(rot[1]*rot[1] + rot[2]*rot[2])))
-                                # angle_pred = torch.rad2deg(torch.atan2(2.0*(rot_pred[0]*rot_pred[1] + rot_pred[3]*rot_pred[2]), 1. - 2.*(rot_pred[1]*rot_pred[1] + rot_pred[2]*rot_pred[2])))
+                                pos, pos_pred, pos_fsw = privileged_obs[self.random_anim_env][j:j+2], priv_train_pred[self.random_anim_env][j:j+2], full_seen_world[self.random_anim_env][j:j+2]
+                                angle, angle_pred, angle_fsw = torch.rad2deg(privileged_obs[self.random_anim_env][j+2:j+3]), torch.rad2deg(priv_train_pred[self.random_anim_env][j+2:j+3]), torch.rad2deg(full_seen_world[self.random_anim_env][j+2:j+3])
+                                size, size_pred, size_fsw = privileged_obs[self.random_anim_env][j+3:j+5], priv_train_pred[self.random_anim_env][j+3:j+5], full_seen_world[self.random_anim_env][j+3:j+5]
+                                
 
                                 block_color = 'red'
-                                # print(j-1, privileged_obs[0][j-1])
                                 if privileged_obs[self.random_anim_env][j-1] == 1:
                                     block_color = 'yellow'
+
+                                fsw_block_color = 'red'
+                                if full_seen_world[self.random_anim_env][j-1] == 1:
+                                    fsw_block_color = 'yellow'
                                 
                                 pred_block_color = 'blue'
                                 if priv_train_pred[self.random_anim_env][j-1] > 0.8:
                                     pred_block_color = 'orange'
 
-                                patch_set_eval.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
-                                patch_set_eval.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
-                                # patch_set_eval.append(pch.Rectangle(fpos.cpu() - fsize.cpu()/2, *(fsize.cpu()), alpha=1.0, facecolor='yellow', label='true_fixed'))
-                                # patch_set_eval.append(pch.Rectangle(fpos_pred.cpu() - fsize_pred.cpu()/2, *(fsize_pred.cpu()), alpha=0.8, facecolor='black', label='pred_fixed'))              
+                                
+                                for _ in range(2):
+                                    patch_set_eval.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
+                                    
+                                    patch_set_eval.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
 
-                                patch_set_eval.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
-                                patch_set_eval.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
+                                    patch_set_eval.append(pch.Rectangle(pos_fsw.cpu() - size_fsw.cpu()/2, *(size_fsw.cpu()), angle=angle_fsw.cpu(), rotation_point='center', facecolor=fsw_block_color, label=f'seen_mov_{i}'))
                             patches_eval.append(patch_set_eval)
 
                     ######
@@ -289,8 +300,10 @@ class Runner:
                     
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
                     
-                    adaptation_hidden_states[:num_train_envs, :] = next_hidden_states
-                    adaptation_hidden_states[num_train_envs:, :] = next_hidden_states_eval
+                    if next_hidden_states is not None:
+                        adaptation_hidden_states[:num_train_envs, :] = next_hidden_states
+                    if next_hidden_states_eval is not None:
+                        adaptation_hidden_states[num_train_envs:, :] = next_hidden_states_eval
 
                     adaptation_hidden_states[dones, :] = 0.
 
@@ -484,8 +497,10 @@ class Runner:
                         traced_script_adaptation_module.save(adaptation_module_path)
                         logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
 
+            self.env.increment_training_ctr()
             self.current_learning_iteration += num_learning_iterations  
 
+        
         with logger.Sync():
             logger.torch_save(self.alg.actor_critic.state_dict(), f"checkpoints/ac_weights_{it:06d}.pt")
             logger.duplicate(f"checkpoints/ac_weights_{it:06d}.pt", f"checkpoints/ac_weights_last.pt")

@@ -11,7 +11,7 @@ if __name__ == '__main__':
     from pathlib import Path
     from ml_logger import logger
     from high_level_policy.envs.highlevelcontrol import HighLevelControlWrapper
-    from high_level_policy import HLP_ROOT_DIR, FULL_INFO, EVAL_EXPERT
+    from high_level_policy import HLP_ROOT_DIR, FULL_INFO, EVAL_EXPERT, EVAL_RATIO
     from high_level_policy.ppo import Runner
 
 
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     num_envs = args.num_envs
     headless = not args.head
 
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=full_info, train_ratio=0.95, hold_out=True)
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=full_info, train_ratio=EVAL_RATIO, hold_out=True)
 
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'{task_inplay}/%Y-%m-%d/{stem}/%H%M%S.%f'),
@@ -63,6 +63,6 @@ if __name__ == '__main__':
 
     logger.log_params(rewards=reward_scales_dict, world_cfg=world_cfg_dict, path='rewards.pkl')
                 
-    gpu_id = 0
+    gpu_id = 1
     runner = Runner(env, device=f"cuda:{gpu_id}")
     runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=EVAL_EXPERT)

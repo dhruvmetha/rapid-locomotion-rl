@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'rapid-locomotion/%Y-%m-%d/{stem}/%H%M%S.%f'),
-                     root=Path(f"{MINI_GYM_ROOT_DIR}/runs").resolve(), )
+                     root=Path(f"{MINI_GYM_ROOT_DIR}/").resolve(), )
     logger.log_text("""
                 charts: 
                 - yKey: train/episode/rew_total/mean

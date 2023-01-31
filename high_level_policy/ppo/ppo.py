@@ -11,7 +11,7 @@ from high_level_policy.ppo import ActorCritic
 from high_level_policy.ppo import RolloutStorage
 from high_level_policy.ppo import caches
 
-from high_level_policy import USE_LATENT, ENCODER, DECODER, SKIP_ADAPTATION_ITER, PER_RECT
+from high_level_policy import USE_LATENT, ENCODER, DECODER, SKIP_ADAPTATION_ITER, PER_RECT, EVAL_EXPERT
 
 torch.manual_seed(42)
 
@@ -53,9 +53,9 @@ class PPO:
         self.iters = 0
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape, obs_history_shape,
-                     action_shape, adaptation_hidden_size):
+                     action_shape, adaptation_hidden_size, latent_size):
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape,
-                                      obs_history_shape, action_shape, adaptation_hidden_size, self.device)
+                                      obs_history_shape, action_shape, adaptation_hidden_size, latent_size, self.device)
 
     def test_mode(self):
         self.actor_critic.test()
@@ -63,19 +63,22 @@ class PPO:
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, privileged_obs, obs_history, adaptation_hs, student=False):
+    def act(self, obs, privileged_obs, obs_history, adaptation_hs, latent_teacher, full_seen_world, rollout=False, student=False):
         # Compute the actions and values
-        priv_latent, actions = self.actor_critic.act(obs, privileged_obs, student=student, observation_history=obs_history, adaptation_hs=adaptation_hs)
+        priv_latent, actions = self.actor_critic.act(obs, privileged_obs, rollout=rollout, student=student, observation_history=obs_history, adaptation_hs=adaptation_hs)
+        _, (latent, _), _ = priv_latent
         self.transition.actions = actions.detach()
         self.transition.values = self.actor_critic.evaluate(obs, privileged_obs, student=student, observation_history=obs_history).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()
         self.transition.action_sigma = self.actor_critic.action_std.detach()
         self.transition.adaptation_hidden_states = adaptation_hs.detach()
+        self.transition.latent_teacher_states = latent_teacher.detach()
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = obs
         self.transition.privileged_observations = privileged_obs
+        self.transition.full_seen_world = full_seen_world
         # print('adding to transition', obs_history[0, -60:])
         self.transition.observation_histories = obs_history
         return priv_latent, self.transition.actions
@@ -121,7 +124,7 @@ class PPO:
         extract_idx = [torch.arange(per_rect*0, per_rect*1, dtype=torch.long, device=self.device), torch.arange(per_rect*1, per_rect*2, dtype=torch.long, device=self.device), torch.arange(per_rect*2, per_rect*3, dtype=torch.long, device=self.device), torch.arange(per_rect*3, per_rect*4, dtype=torch.long, device=self.device)]
         reconstruction_loss = None
         # loss = None
-        for i in extract_idx:
+        for i in extract_idx[:2]:
             
             loss = F.binary_cross_entropy(F.sigmoid(pred[:, i[0]]), gt[:, i[0]])
             loss += F.binary_cross_entropy(F.sigmoid(pred[:, i[1]]), gt[:, i[1]])
@@ -133,8 +136,6 @@ class PPO:
             #     print("movable", pred[0, i[1]], gt[0, i[1]]) 
             #     print("rect", pred[0, i[2:]], gt[0, i[2:]]) 
             #     print("loss", loss.item())
-
-
 
             if reconstruction_loss is not None:
                 reconstruction_loss += loss
@@ -313,7 +314,7 @@ class PPO:
                 if student:        
                     mean_adaptation_module_loss += adaptation_loss.item()
 
-                if not student and self.iters > SKIP_ADAPTATION_ITER:
+                if not student and self.iters > SKIP_ADAPTATION_ITER and not EVAL_EXPERT:
                     # Adaptation module gradient step
                     for epoch in range(PPO_Args.num_adaptation_module_substeps):
                         # with torch.enable_grad():
@@ -377,7 +378,7 @@ class PPO:
             else:
                 mean_adaptation_module_loss /= num_updates
                 mean_adaptation_reconstruction_loss /= num_updates
-        self.storage.clear()
+        self.storage.clear(save=self.iters>=0)
 
         self.iters += 1
 

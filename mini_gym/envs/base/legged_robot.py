@@ -177,7 +177,7 @@ class LeggedRobot(BaseTask):
 
         self.contact_forces = self.all_contact_forces[self.go1_rb_indices].view(self.num_envs, -1, 3)
 
-        self.world_obs = self.world_asset.get_block_obs()
+        self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
 
         self._post_physics_step_callback()
 
@@ -263,7 +263,7 @@ class LeggedRobot(BaseTask):
         self._call_train_eval(self._reset_dofs, env_ids)
         self._call_train_eval(self._reset_root_states, env_ids)
         self._call_train_eval(self.world_asset.reset_world, env_ids)
-        self.world_obs = self.world_asset.get_block_obs()
+        self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
         # print(self.world_obs.shape)
 
         # reset buffersew

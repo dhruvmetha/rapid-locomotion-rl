@@ -347,19 +347,19 @@ TASK_0 = [
         #     'density': [10000, 8][::-1]
         # },
 
-        {
-            'name': ['fixed_block_1', 'movable_block_1'][::-1],
-            'size': [[lambda : round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[0.2, 0.8]), 2), lambda: 0.4], [lambda: round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[0.2, 1.7]), 2), lambda: 0.4]][::-1], 
-            'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), 0.2], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]][::-1],
-            'density': [10000, 8][::-1]
-        },
+        # {
+        #     'name': ['fixed_block_1', 'movable_block_1'][::-1],
+        #     'size': [[lambda : round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[0.2, 0.8]), 2), lambda: 0.4], [lambda: round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[0.2, 1.7]), 2), lambda: 0.4]][::-1], 
+        #     'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), 0.2], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]][::-1],
+        #     'density': [10000, 8][::-1]
+        # },
 
-        {
-            'name': ['fixed_block_2', 'movable_block_2'][::-1],
-            'size': [[lambda : round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[0.2, 0.8]), 2), lambda: 0.4], [lambda: round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[1.0, 1.7]), 2), lambda: 0.4]][::-1], 
-            'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), 0.2], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]][::-1],
-            'density': [10000, 8][::-1]
-        },
+        # {
+        #     'name': ['fixed_block_2', 'movable_block_2'][::-1],
+        #     'size': [[lambda : round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[0.2, 0.8]), 2), lambda: 0.4], [lambda: round(np.random.uniform(*[0.4, 0.4]), 2), lambda: round(np.random.uniform(*[1.0, 1.7]), 2), lambda: 0.4]][::-1], 
+        #     'pos': [[round(np.random.uniform(*world_cfg.fixed_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.fixed_block.pos_y_range), 2), 0.2], [round(np.random.uniform(*world_cfg.movable_block.pos_x_range), 2), round(np.random.uniform(*world_cfg.movable_block.pos_y_range), 2), 0.2]][::-1],
+        #     'density': [10000, 8][::-1]
+        # },
 
         {
             'name': ['fixed_block_3'][::-1],
@@ -513,5 +513,5 @@ TASK_6 = [
 INPLAY_ASSETS = [*TASK_0]
 # INPLAY_ASSETS = [*INPLAY_ASSETS]
 # INPLAY_ASSETS = [*TASK_6] 
-EVAL_INPLAY_ASSETS = [*(TASK_0[:1])]
+EVAL_INPLAY_ASSETS = [*(TASK_0[1:2])]
 # EVAL_INPLAY_ASSETS = [*TASK_6]

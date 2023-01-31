@@ -51,17 +51,19 @@ if __name__ == "__main__":
     from matplotlib import pyplot as plt
 
     num_envs = 20
-    env = HighLevelControlWrapper(num_envs=num_envs, headless=False, test=True)
+    env = HighLevelControlWrapper(num_envs=num_envs, headless=True, test=False)
 
-    recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
+    recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/task_pure_rl/*/*/*"), key=os.path.getmtime)
     # print(recent_runs)
     logger.configure(Path(recent_runs[-1]).resolve())
     model, policy = load_env(headless=False)
 
     import torch
     model = model.cpu()
-    example = torch.rand(1, 18).cpu()
+    example = torch.rand(1, 13).cpu()
     actor_model = model.actor_body.cpu()
 
     traced_script_module = torch.jit.trace(actor_model, example)
-    traced_script_module.save("./cpp_files/walking_actor_hlp_model_1025.pt")
+    if os.path.exists("./cpp_files") == False:
+        os.mkdir("./cpp_files")
+    traced_script_module.save("./cpp_files/walking_push_simple_policy.pt")

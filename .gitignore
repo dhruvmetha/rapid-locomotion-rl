@@ -74,3 +74,8 @@ models/
 *.pt
 cpp_files/
 activate_env.sh
+indep_model/results/
+indep_model/results_old/
+psuedo_online_sim_results/
+real_robot_data/
+.ipynb_checkpoints/

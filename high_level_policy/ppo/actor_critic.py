@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from params_proto import PrefixProto
 from torch.distributions import Normal
+from torch.utils.data import TensorDataset, DataLoader
+
 
 from high_level_policy import *
 from high_level_policy.utils import unpad_trajectories
@@ -23,12 +25,12 @@ class AC_Args(PrefixProto, cli=False):
 
     adaptation_module_branch_hidden_dims = [[4096, 2048, 1024, 512, 256, 128, 64]]
 
-    env_factor_encoder_branch_input_dims = [28 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_encoder_branch_input_dims = [PER_RECT*2 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_encoder_branch_latent_dims = [LATENT_DIM_SIZE if world_cfg.fixed_block.add_to_obs else 4]
     env_factor_encoder_branch_hidden_dims = [[256, 128]]
 
     env_factor_decoder_branch_input_dims = [LATENT_DIM_SIZE if world_cfg.fixed_block.add_to_obs else 4]
-    env_factor_decoder_branch_latent_dims = [28 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_decoder_branch_latent_dims = [PER_RECT*2 if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_decoder_branch_hidden_dims = [[256, 128]]
 
 
@@ -127,45 +129,52 @@ class ActorCritic(nn.Module):
 
             else:
 
-                for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
-                        zip(AC_Args.env_factor_encoder_branch_input_dims,
-                            AC_Args.env_factor_encoder_branch_hidden_dims,
-                            AC_Args.env_factor_encoder_branch_latent_dims)):
-                    # Env factor encoder
-                    env_factor_encoder_layers = []
-                    env_factor_encoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
-                    env_factor_encoder_layers.append(activation)
-                    for l in range(len(branch_hidden_dims)):
-                        if l == len(branch_hidden_dims) - 1:
-                            env_factor_encoder_layers.append(
-                                nn.Linear(branch_hidden_dims[l], branch_latent_dim))
-                        else:
-                            env_factor_encoder_layers.append(
-                                nn.Linear(branch_hidden_dims[l],
-                                        branch_hidden_dims[l + 1]))
-                            env_factor_encoder_layers.append(activation)
-                self.env_factor_encoder = nn.Sequential(*env_factor_encoder_layers)
-                self.add_module(f"encoder", self.env_factor_encoder)
+                if ENCODER:
+                    for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
+                            zip(AC_Args.env_factor_encoder_branch_input_dims,
+                                AC_Args.env_factor_encoder_branch_hidden_dims,
+                                AC_Args.env_factor_encoder_branch_latent_dims)):
+                        # Env factor encoder
+                        env_factor_encoder_layers = []
+                        env_factor_encoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
+                        env_factor_encoder_layers.append(activation)
+                        for l in range(len(branch_hidden_dims)):
+                            if l == len(branch_hidden_dims) - 1:
+                                env_factor_encoder_layers.append(
+                                    nn.Linear(branch_hidden_dims[l], branch_latent_dim))
+                            else:
+                                env_factor_encoder_layers.append(
+                                    nn.Linear(branch_hidden_dims[l],
+                                            branch_hidden_dims[l + 1]))
+                                env_factor_encoder_layers.append(activation)
+                    self.env_factor_encoder = nn.Sequential(*env_factor_encoder_layers)
+                    self.add_module(f"encoder", self.env_factor_encoder)
 
-                for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
-                        zip(AC_Args.env_factor_decoder_branch_input_dims,
-                            AC_Args.env_factor_decoder_branch_hidden_dims,
-                            AC_Args.env_factor_decoder_branch_latent_dims)):
-                    # Env factor decoder
-                    env_factor_decoder_layers = []
-                    env_factor_decoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
-                    env_factor_decoder_layers.append(activation)
-                    for l in range(len(branch_hidden_dims)):
-                        if l == len(branch_hidden_dims) - 1:
-                            env_factor_decoder_layers.append(
-                                nn.Linear(branch_hidden_dims[l], branch_latent_dim))
-                        else:
-                            env_factor_decoder_layers.append(
-                                nn.Linear(branch_hidden_dims[l],
-                                        branch_hidden_dims[l + 1]))
+                    if DECODER:
+                        for i, (branch_input_dim, branch_hidden_dims, branch_latent_dim) in enumerate(
+                                zip(AC_Args.env_factor_decoder_branch_input_dims,
+                                    AC_Args.env_factor_decoder_branch_hidden_dims,
+                                    AC_Args.env_factor_decoder_branch_latent_dims)):
+                            # Env factor decoder
+                            env_factor_decoder_layers = []
+                            env_factor_decoder_layers.append(nn.Linear(branch_input_dim, branch_hidden_dims[0]))
                             env_factor_decoder_layers.append(activation)
-                self.env_factor_decoder = nn.Sequential(*env_factor_decoder_layers)
-                self.add_module(f"decoder", self.env_factor_decoder)
+                            for l in range(len(branch_hidden_dims)):
+                                if l == len(branch_hidden_dims) - 1:
+                                    env_factor_decoder_layers.append(
+                                        nn.Linear(branch_hidden_dims[l], branch_latent_dim))
+                                else:
+                                    env_factor_decoder_layers.append(
+                                        nn.Linear(branch_hidden_dims[l],
+                                                branch_hidden_dims[l + 1]))
+                                    env_factor_decoder_layers.append(activation)
+                        self.env_factor_decoder = nn.Sequential(*env_factor_decoder_layers)
+                        self.add_module(f"decoder", self.env_factor_decoder)
+
+            if ENCODER:
+                output_size = LATENT_DIM_SIZE
+            else:
+                output_size = self.num_privileged_obs
 
             if not LSTM_ADAPTATION:
                 # Adaptation module
@@ -192,7 +201,7 @@ class ActorCritic(nn.Module):
                         super(GRU, self).__init__()
                         self.hidden_size = hidden_size
                         self.gru = nn.GRU(input_size, hidden_size, batch_first=True)
-                        fc_layers = [hidden_size, 512, 128, output_size]
+                        fc_layers = [hidden_size, output_size]
                         layers_list = []
                         for l in range(len(fc_layers) - 1):
                             layers_list.append(nn.Linear(fc_layers[l], fc_layers[l + 1]))
@@ -201,21 +210,24 @@ class ActorCritic(nn.Module):
                         self.fc = nn.Sequential(*layers_list)
 
                     def forward(self, observation_history, hidden_states):
+                        # print(observation_history.shape)
                         out, h = self.gru(observation_history, hidden_states)
-                        hidden_states = h[:, -1, :]
-                        out = self.fc(out[:, -1, :])
-                        return out, hidden_states
+                        # print(h.shape)
+                        # hidden_states = h[:, -1, :]
+                        # print(out.shape)
+                        final_out = self.fc(out[:, -1, :])
+                        return final_out, out[:, 1, :]
 
-                if ENCODER:
-                    output_size = LATENT_DIM_SIZE
-                else:
-                    output_size = self.num_privileged_obs
+                # if ENCODER:
+                #     output_size = LATENT_DIM_SIZE
+                # else:
+                #     output_size = self.num_privileged_obs
                 
                 self.adaptation_module = GRU(num_obs_history//ROLLOUT_HISTORY, HIDDEN_STATE_SIZE, output_size)
                 # self.adaptation_module = nn.Identity()
                 self.add_module(f"adaptation_module", self.adaptation_module)
 
-            total_latent_dim += int(torch.sum(torch.Tensor(AC_Args.env_factor_encoder_branch_latent_dims)))
+            total_latent_dim += output_size
 
             # Shared layers
             if SHARED:
@@ -233,8 +245,11 @@ class ActorCritic(nn.Module):
         if ENCODER:
             num_obs_complete = num_obs + total_latent_dim
         else:
-            num_obs_complete = num_obs + num_privileged_obs
-        
+            if USE_LATENT:
+                num_obs_complete = num_obs + num_privileged_obs
+            else:
+                num_obs_complete = num_obs
+
         # Policy
         actor_layers = []
         actor_layers.append(nn.Linear(num_obs_complete, AC_Args.actor_hidden_dims[0]))
@@ -297,43 +312,128 @@ class ActorCritic(nn.Module):
         if not LSTM_ADAPTATION:
             return self.adaptation_module(observation_history), hidden_states.unsqueeze(0)
         else:
+            # print(hidden_states.shape)
             observation_history_ = observation_history.view(-1, ROLLOUT_HISTORY, self.num_obs_history//ROLLOUT_HISTORY)
             return self.adaptation_module(observation_history_, hidden_states.unsqueeze(0))
 
+    def update_distribution(self, observations, privileged_observations, rollout=False, student=False, observation_history=None, adaptation_hs=None):
+        full_priv_obs_pred_student, full_priv_obs_pred_teacher = None, privileged_observations
+        full_latent_teacher, full_latent_student = None, None
+        full_next_hidden_states = None
+        full_mean = None
 
-    def update_distribution(self, observations, privileged_observations, student=False, observation_history=None, adaptation_hs=None):
-        priv_obs_pred_student, priv_obs_pred_teacher = None, privileged_observations
-        latent_teacher, latent_student = None, None
-        if USE_LATENT:
-            # if student:
-            #     if observation_history is None:
-            #         raise "No observation history"
-                # priv_obs_pred_student = self.env_factor_decoder(latent_student)
-            if ENCODER:
-                latent_teacher = self.env_factor_encoder(privileged_observations)
+        # print(adaptation_hs.shape)
+
+        tensor_dataset = TensorDataset(observations, privileged_observations)
+        if observation_history is not None:
+            tensor_dataset = TensorDataset(observations, privileged_observations, observation_history, adaptation_hs)
+        
+        bs = observations.shape[0]
+        if rollout:
+            # print("Rollout", bs)
+            bs = observations.shape[0]
+        last_batch_idx = len(tensor_dataset)//bs
+        left_over = len(tensor_dataset) - last_batch_idx * bs
+            # print(last_batch_idx, left_over)
+        # use a batch to do inference if rollout is true
+        dataloader = DataLoader(tensor_dataset, batch_size=bs, shuffle=False)
+
+        for batch_idx, data in enumerate(dataloader):
+
+
+            if observation_history is not None:
+                # print(batch_idx)
+                if batch_idx == last_batch_idx:
+                    observations_batch, privileged_observations_batch, observation_history_batch, adaptation_hs_batch = data[:left_over]
+                    # print(observations_batch.size())
+                else:
+                    observations_batch, privileged_observations_batch, observation_history_batch, adaptation_hs_batch = data
             else:
-                latent_teacher = privileged_observations
-            if ENCODER and DECODER:
-                priv_obs_pred_teacher = self.env_factor_decoder(latent_teacher)
+                observations_batch, privileged_observations_batch = data
             
-            if student:
-                latent_student, next_hidden_states = self.get_latent_student(observation_history, adaptation_hs)
-                mean = self.actor_body(torch.cat((observations, latent_student), dim=-1))
-                # if DECODER:
-                #     priv_obs_pred_student = self.env_factor_decoder(latent_student)
-            else:
-                with torch.no_grad():
-                    
-                    latent_student, next_hidden_states = self.get_latent_student(observation_history, adaptation_hs)
-                mean = self.actor_body(torch.cat((observations, latent_teacher), dim=-1))
+            if USE_LATENT:
+                if ENCODER:
+                    latent_teacher = self.env_factor_encoder(privileged_observations_batch)
+                else:
+                    latent_teacher = privileged_observations_batch
+                if ENCODER and DECODER:
+                    priv_obs_pred_teacher = self.env_factor_decoder(latent_teacher)
                 
-        else:
-            mean = self.actor_body(observations)
-        self.distribution = Normal(mean, mean * 0. + self.std)
-        return (priv_obs_pred_teacher, priv_obs_pred_student), (latent_teacher, latent_student), (next_hidden_states.squeeze(0))
+                if student:
+                    latent_student, next_hidden_states = self.get_latent_student(observation_history_batch, adaptation_hs_batch)
+                    mean = self.actor_body(torch.cat((observations_batch, latent_student), dim=-1))
+                    # if DECODER:
+                    #     priv_obs_pred_student = self.env_factor_decoder(latent_student)
+                else:
+                    with torch.no_grad():
+                        latent_student, next_hidden_states = self.get_latent_student(observation_history_batch, adaptation_hs_batch)
+                    # print('next_hidden_states', next_hidden_states.shape)
+                    mean = self.actor_body(torch.cat((observations_batch, latent_teacher), dim=-1))
 
-    def act(self, observations, privileged_observations, **kwargs):
-        priv_obs_pred, latent, hidden_states = self.update_distribution(observations, privileged_observations, student=kwargs['student'], observation_history=kwargs['observation_history'], adaptation_hs=kwargs['adaptation_hs'])
+                if full_latent_student is None and full_latent_teacher is None:
+                    full_latent_student = latent_student
+                    full_latent_teacher = latent_teacher
+                    # full_priv_obs_pred_student = priv_obs_pred_student
+                    if ENCODER and DECODER:
+                        full_priv_obs_pred_teacher = priv_obs_pred_teacher
+                    full_mean = mean
+                    full_next_hidden_states = next_hidden_states
+                    # print('full_next_hidden_states', full_next_hidden_states.shape)
+                else:
+                    full_latent_student = torch.cat((full_latent_student, latent_student), dim=0)
+                    full_latent_teacher = torch.cat((full_latent_teacher, latent_teacher), dim=0)
+                    # full_priv_obs_pred_student = torch.cat((full_priv_obs_pred_student, priv_obs_pred_student), dim=0)
+                    if ENCODER and DECODER:
+                        full_priv_obs_pred_teacher = torch.cat((full_priv_obs_pred_teacher, priv_obs_pred_teacher), dim=0)
+                    full_mean = torch.cat((full_mean, mean), dim=0)
+                    # print('next_hidden_states', next_hidden_states.shape)
+                    full_next_hidden_states = torch.cat((full_next_hidden_states, next_hidden_states), dim=0)
+                
+            else:
+                mean = self.actor_body(observations_batch)
+                next_hidden_states = torch.zeros(1, observation_history_batch.shape[0], HIDDEN_STATE_SIZE).to(observation_history_batch.device)
+
+                if full_mean is None:
+                    full_mean = mean
+                    full_next_hidden_states = next_hidden_states
+                else:
+                    full_mean = torch.cat((full_mean, mean), dim=0)
+                    full_next_hidden_states = torch.cat((full_next_hidden_states, next_hidden_states), dim=0)
+
+            # print('hidden', full_next_hidden_states.shape)
+            
+
+        # if USE_LATENT:
+        #     # if student:
+        #     #     if observation_history is None:
+        #     #         raise "No observation history"
+        #         # priv_obs_pred_student = self.env_factor_decoder(latent_student)
+        #     if ENCODER:
+        #         latent_teacher = self.env_factor_encoder(privileged_observations)
+        #     else:
+        #         latent_teacher = privileged_observations
+        #     if ENCODER and DECODER:
+        #         priv_obs_pred_teacher = self.env_factor_decoder(latent_teacher)
+            
+        #     if student:
+        #         latent_student, next_hidden_states = self.get_latent_student(observation_history, adaptation_hs)
+        #         mean = self.actor_body(torch.cat((observations, latent_student), dim=-1))
+        #         # if DECODER:
+        #         #     priv_obs_pred_student = self.env_factor_decoder(latent_student)
+        #     else:
+        #         with torch.no_grad():
+        #             latent_student, next_hidden_states = self.get_latent_student(observation_history, adaptation_hs)
+                    
+        #         mean = self.actor_body(torch.cat((observations, latent_teacher), dim=-1))
+                
+        # else:
+        #     mean = self.actor_body(observations)
+        #     next_hidden_states = torch.zeros(1, observation_history.shape[0], HIDDEN_STATE_SIZE).to(observation_history.device)
+        self.distribution = Normal(full_mean, full_mean * 0. + self.std)
+        return (full_priv_obs_pred_teacher, full_priv_obs_pred_student), (full_latent_teacher, full_latent_student), (full_next_hidden_states.squeeze(0))
+
+    def act(self, observations, privileged_observations, rollout=False, **kwargs):
+        priv_obs_pred, latent, hidden_states = self.update_distribution(observations, privileged_observations, rollout=rollout, student=kwargs['student'], observation_history=kwargs['observation_history'], adaptation_hs=kwargs['adaptation_hs'])
         return (priv_obs_pred, latent, hidden_states), self.distribution.sample()
 
     def get_actions_log_prob(self, actions):
@@ -380,13 +480,14 @@ class ActorCritic(nn.Module):
         priv_obs_pred = None
         latent = None
         if USE_LATENT:
-            latent = self.env_factor_encoder(privileged_info)
             priv_obs_pred = None
             if ENCODER: 
+                latent = self.env_factor_encoder(privileged_info)
                 if DECODER:
                     priv_obs_pred = self.env_factor_decoder(latent)
             else:
-                priv_obs_pred = latent
+                latent = privileged_info
+                priv_obs_pred = privileged_info
             actions_mean = self.actor_body(torch.cat((observations, latent), dim=-1))
             policy_info["latents"] = latent.detach().cpu().numpy()
         else:
