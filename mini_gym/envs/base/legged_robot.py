@@ -177,6 +177,7 @@ class LeggedRobot(BaseTask):
 
         self.contact_forces = self.all_contact_forces[self.go1_rb_indices].view(self.num_envs, -1, 3)
 
+        
         self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
 
         self._post_physics_step_callback()
@@ -263,6 +264,7 @@ class LeggedRobot(BaseTask):
         self._call_train_eval(self._reset_dofs, env_ids)
         self._call_train_eval(self._reset_root_states, env_ids)
         self._call_train_eval(self.world_asset.reset_world, env_ids)
+        
         self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
         # print(self.world_obs.shape)
 
@@ -1367,6 +1369,7 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, anymal_handle, body_props, recomputeInertia=True)
             self.actor_handles.append(anymal_handle)
             
+            self.gym.enable_actor_dof_force_sensors(env_handle, self.actor_handles[-1])
             # camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
             # local_transform = gymapi.Transform()
             # local_transform.p = ([*(pos[:2]), pos[2]+1.0])
@@ -1534,14 +1537,14 @@ class LeggedRobot(BaseTask):
             self.env_origins[env_ids, 2] = 0.
 
     def _parse_cfg(self, cfg):
-        self.dt = self.cfg.control.decimation * self.sim_params.dt
+        self.dt = self.cfg.control.decimation * self.sim_params.dt  # 4 * 0.005 = 0.02
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = vars(self.cfg.rewards.scales)
         cfg.command_ranges = vars(cfg.commands)
         if cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
             cfg.terrain.curriculum = False
         max_episode_length_s = cfg.env.episode_length_s
-        cfg.env.max_episode_length = np.ceil(max_episode_length_s / self.dt)
+        cfg.env.max_episode_length = np.ceil(max_episode_length_s / self.dt) # 15 / 0.02 = 750
         self.max_episode_length = cfg.env.max_episode_length
 
         cfg.domain_rand.push_interval = np.ceil(cfg.domain_rand.push_interval_s / self.dt)

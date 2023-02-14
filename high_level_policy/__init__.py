@@ -21,7 +21,7 @@ STUDENT_ENCODING = 5000
 TEACHER_FORCING = 0
 ENCODER = False
 DECODER = True
-EVAL_RATIO = .95
+EVAL_RATIO = .99
 MAX_EPISODE_LENGTH = 15
 FULL_INFO = True
 EVAL_EXPERT = True
@@ -32,14 +32,17 @@ HIDDEN_STATE_SIZE = 512
 SKIP_ADAPTATION_ITER = 0
 ONE_TOUCH_MAP = True
 LATENT_DIM_SIZE = 8
-PER_RECT = 7
+PER_RECT = 8
+RECTS = 3
+CREATE_VIZ = True
 SAVE_ADAPTATION_DATA = False
-SAVE_ADAPTATION_DATA_FILE_NAME = 'set_9'
+START_SAVE_ITER = 50
+SAVE_ADAPTATION_DATA_FILE_NAME = 'random_3obstacle_data_bb_weight_move_1/test'
 
 experiment_runs = ['pure_rl', 'full_info_decoder', 'teacher_decoder', 'student_decoder', 'teacher_no_decoder', 'student_no_decoder', 'student_decoder_0', 'student_decoder_lstm']
 exp = experiment_runs[int(os.environ.get('RUN_TYPE'))]
 wandb_mode = str(os.environ.get('WANDB_MODE', 'online'))
-print(exp)
+# print(exp)
 if exp == 'full_info_decoder':
     FULL_INFO = True
     DECODER = True
@@ -55,6 +58,7 @@ elif exp == 'teacher_decoder':
     DECODER = True
     USE_LATENT = True
     EVAL_EXPERT = True
+    LSTM_ADAPTATION = False
     # TEACHER_FORCING = 0
 elif exp == 'teacher_no_decoder':
     FULL_INFO = False
@@ -96,7 +100,7 @@ elif exp == 'student_decoder_lstm':
     LSTM_ADAPTATION = True
 
 wandb_config = {
-    "project":'legged_navigation', "group":'no_enc_exp_2', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 (1 type); much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, exploration: -0.1; history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test."
+    "project":'legged_navigation', "group":'new_rewards_3obs', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "desc: training using a more dense reward, changed zero velocity penalty to 0.2, task 0 (1 type); much deeper adaptation model, entropy coeff: 0.01, observing entropy loss and kl mean, action_rate: 0, velocity penalty scaling : -0.001, exploration: -0.1; history length : 100, addded eval adaptation and reconstruction eval measures, not adaptive training, completely changed reconstruction loss to make it a mix of bce and mse loss, split for each contact object, fixed eval set; dataset: same train and test."
 }
 
 task_inplay = f'task_{exp}'
@@ -130,24 +134,32 @@ class world_cfg:
 class reward_scales:
     # terminal rewards
     terminal_distance_covered = -0.0
-    terminal_distance_gs = 100.0
+    terminal_distance_gs = 500.0
     terminal_ll_reset = 0
+    # terminal_pos_reset = -100.0
     terminal_time_out = -5.0
     terminal_gs_velocity = 0
 
     # step rewards
     distance_gs  = 0.
     velocity_gs = 0.
-    distance = -2.0     # 1 - 1/exp(distance to goal)
+    distance = -0.5     # 1 - 1/exp(distance to goal)
     time = -0.0 # -0.1
-    action_rate = -0.00
+    # action_rate = -0.2
     # ll_reset = -1.0
     lateral_vel = -0.005
     angular_vel = -0.005
     backward_vel = -0.001
-    collision = -0.01
-    zero_velocity = -0.001
-    exploration = -0.5
+    # collision = -0.01
+    # zero_velocity = -0.001
+    # exploration = -0.0
+    # side_limits = -2.0
+    # back_limits = -2.0
+    # action_energy = -1.0
+    # torque_energy = -1.0
+    base_lin_vel = -0.2
+    base_ang_vel = -0.2
+
 
 # class reward_scales:
 #     # terminal rewards

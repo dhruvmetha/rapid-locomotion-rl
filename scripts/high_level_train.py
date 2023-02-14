@@ -31,6 +31,13 @@ if __name__ == '__main__':
     parser.add_argument('--head', action='store_true', default=False,
                         help='run in headless mode')
 
+    # add a positional argument for the gpu id
+    # the type of this argument will be an integer
+    # the default value will be 0
+    parser.add_argument('--gpu', type=int, default=0,
+                        help='the gpu id to use')
+    
+
     # parse the command line arguments
     args = parser.parse_args()
 
@@ -41,6 +48,7 @@ if __name__ == '__main__':
 
     num_envs = args.num_envs
     headless = not args.head
+    gpu_id = args.gpu
 
     env = HighLevelControlWrapper(num_envs=num_envs, headless=headless, test=False, full_info=full_info, train_ratio=EVAL_RATIO, hold_out=True)
 
@@ -55,7 +63,7 @@ if __name__ == '__main__':
                 - yKey: train/episode/command_area/mean
                   xKey: iterations
                 - type: video
-                  glob: "videos/*.mp4"
+                  glob: "videos/*.mp4"A
                 """, filename=".charts.yml", dedent=True)
     
     reward_scales_dict = {k: v for k, v in vars(reward_scales).items() if not (k.startswith('__'))}
@@ -63,6 +71,6 @@ if __name__ == '__main__':
 
     logger.log_params(rewards=reward_scales_dict, world_cfg=world_cfg_dict, path='rewards.pkl')
                 
-    gpu_id = 1
+    # gpu_id = gpu_id
     runner = Runner(env, device=f"cuda:{gpu_id}")
     runner.learn(num_learning_iterations=5000, eval_freq=100, eval_expert=EVAL_EXPERT)

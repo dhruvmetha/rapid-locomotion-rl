@@ -6,11 +6,13 @@ import os
 from tqdm import tqdm 
 from pathlib import Path
 import time
+from indep_model.config import *
+
 FFwriter = animation.FFMpegWriter
 
 
 RECENT_MODEL = sorted(glob.glob("./indep_model/results/*/*"), key=os.path.getmtime)[-1]
-# RECENT_MODEL = '/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/indep_model/results/transformer_250_2048/2023-01-30_08-42-28'
+# RECENT_MODEL = '/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/indep_model/results/transformer_250_2048_3obs/2023-02-04_11-46-35'
 print(RECENT_MODEL)
 source_folder = f"{RECENT_MODEL}/plots"
 dest_folder = f"{RECENT_MODEL}/animations"
@@ -23,7 +25,7 @@ def on_new_file(tmp_img_path, save_to=None):
     file_name = Path(tmp_img_path).stem
     # if os.path.exists(f"{dest_folder}/{file_name}.mp4"):
     #     continue
-    fig, axes = plt.subplots(2, 2, figsize=(24, 24))
+    fig, axes = plt.subplots(2, 2, figsize=(48, 24))
     ax = axes.flatten()
 
     try:
@@ -51,12 +53,12 @@ def on_new_file(tmp_img_path, save_to=None):
         ax[2].add_patch(robot_2)
         ax[3].add_patch(robot_3)
 
-        ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all')
-        ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth')
-        ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted')
-        ax[3].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='full seen world')
+        ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all', aspect='auto')
+        ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth', aspect='auto')
+        ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted', aspect='auto')
+        ax[3].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='full seen world', aspect='auto')
         
-        for i in range(2):
+        for i in range(RECTS):
             j = i*6 + 4
             ax[0].add_patch(frame[j])
             ax[0].add_patch(frame[j+1])
@@ -65,7 +67,6 @@ def on_new_file(tmp_img_path, save_to=None):
             ax[2].add_patch(frame[j+4])
 
             ax[3].add_patch(frame[j+5])
-
         last_patch.extend(frame)
     
     anim = animation.FuncAnimation(fig, animate, frames=patches, interval=10, repeat=False)

@@ -16,8 +16,9 @@ from pathlib import Path
 from datetime import datetime
 from visualization import get_visualization
 import pickle
+from config import *
 
-device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 window_size = 250
 sequence_length = 250
 hidden_state_size = 2048
@@ -30,53 +31,91 @@ train_batch_size = 128
 test_batch_size = 128
 learning_rate = 1e-4
 dropout = 0.
-input_size = 13
+input_size = 25
+output_size = 21
+# RECTS = 2
 
-wandb.init(project='indep_model', name=f'{alg}_{sequence_length}_{hidden_state_size}')
+wandb.init(project='indep_model', name=f'{alg}_{sequence_length}_{hidden_state_size}_3obs/')
 
-SAVE_FOLDER = Path(f'./indep_model/results/{alg}_{sequence_length}_{hidden_state_size}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+SAVE_FOLDER = Path(f'./indep_model/results/{alg}_{sequence_length}_{hidden_state_size}_3obs/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
 PLOT_FOLDER = 'plots'
 CHECKPOINT_FOLDER = 'checkpoints'
 
-traj_data_file = '/common/users/dm1487/legged_manipulation_data/rollout_data/latest_individual_traj_mini'
-ingore_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/ignore_files_latest_individual_traj_mini.pkl'
+#### works really well
+# traj_data_file = '/common/users/dm1487/legged_manipulation_data/rollout_data/latest_individual_traj_mini'
+# ingore_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/ignore_files_latest_individual_traj_mini.pkl'
+# input_size = 37
+# output_size = 14
+# RECTS = 2
+# learning_rate = 1e-4
+####
+
+#### 3 obstacle
+traj_data_file = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/traj_list_train_bb_traj'
+ingore_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/ignore_random_traj_bb.pkl'
+label_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/labels_random_traj_bb.pkl'
+#####
+
 with open(ingore_data_files, 'rb') as f:
     ignore_files_loaded = pickle.load(f)
+with open(label_data_files, 'rb') as f:
+    label_idx = pickle.load(f)
+
+#     pickle.dump(label_idx, f)
+
 idxs_ignored = [int(i.stem.split('_')[-1]) for i in ignore_files_loaded]
 
+idxs_valid = {1: [], 2:[], 3:[]}
+train_labels = []
+val_labels = []
+for k, v in label_idx.items():
+    idxs_valid[k] = [int(i.stem.split('_')[-1]) for i in list(set(v) - set(ignore_files_loaded))]
+limit_class = min(len(idxs_valid[1][:-2000]), len(idxs_valid[2][:-2000]), len(idxs_valid[3][:-2000]))
+train_idxs_valid_all = []
+for k, v in idxs_valid.items():
+    train_labels.extend((np.zeros(limit_class) + k).astype(int).tolist())
+    train_idxs_valid_all.extend(np.random.choice(v[:-2000], limit_class))
+val_idxs_valid_all = []
+for k, v in idxs_valid.items():
+    val_labels.extend((np.zeros(2000) + k).astype(int).tolist())
+    val_idxs_valid_all.extend(np.random.choice(v[-2000:], 2000))
+
+# idxs_ignored =[]
 # train_idxs = np.concatenate((np.random.randint(0, 60000, 40000), np.random.randint(60000, 120000, 40000), np.random.randint(120000, 180000, 40000)), axis=-1).astype(int).tolist()
 all_train_test_files = sorted(glob(f'{traj_data_file}/*.npz'), key=lambda x: int(x.split('.npz')[0].split('/')[-1].split('_')[-1]))
-training_size = int(len(all_train_test_files) * 0.9)
-val_size = int(len(all_train_test_files) - training_size)
+# training_size = int(len(all_train_test_files) * 0.9)
+# val_size = int(len(all_train_test_files) - training_size)
 
-print(training_size, val_size)
+# print(training_size, val_size)
 
-train_idxs = np.arange(0, training_size).astype(int).tolist()
+# train_idxs = np.arange(0, training_size).astype(int).tolist()
+# # print(len(train_idxs))
+# train_idxs = list(set(train_idxs) - set(idxs_ignored))
 # print(len(train_idxs))
-train_idxs = list(set(train_idxs) - set(idxs_ignored))
-# print(len(train_idxs))
-# train_idxs = np.random.randint(0, 1000, 1000).astype(int).tolist()
+# train_idxs = [int(i) for i in np.random.randint(0, len(train_idxs), 10000).astype(int).tolist()]
 # train_idxs = np.random.randint(0, 180000, 30000).astype(int).tolist()
-val_idxs = [int(i) for i in range(training_size, len(all_train_test_files))]
-# print(len(val_idxs))
-val_idxs = list(set(val_idxs) - set(idxs_ignored))
+# val_idxs = [int(i) for i in range(training_size, len(all_train_test_files))]
+# # print(len(val_idxs))
+# val_idxs = list(set(val_idxs) - set(idxs_ignored))
 # print(len(val_idxs))
 # val_idxs = np.random.randint(1000, 1300, 300).astype(int).tolist()
+# print(len(train_idxs))
+# val_idxs = train_idxs # [int(i) for i in np.random.randint(0, len(val_idxs), 1000).astype(int).tolist()]
 
-training_files = [all_train_test_files[i] for i in train_idxs]
+training_files = [all_train_test_files[i] for i in train_idxs_valid_all]
 # val_files = sorted(glob(f'{traj_data_file}/*.npz'), key=lambda x: int(x.split('.npz')[0].split('/')[-1]))
-val_files = [all_train_test_files[i] for i in val_idxs]
+val_files = [all_train_test_files[i] for i in val_idxs_valid_all]
 
-train_ds = CustomDataset(files=training_files, input_size=input_size, sequence_length=sequence_length, window_size=window_size)
+train_ds = CustomDataset(files=training_files, labels = train_labels, input_size=input_size, sequence_length=sequence_length, window_size=window_size)
 train_dl = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)
 
-val_ds = CustomDataset(files=val_files, input_size=input_size, sequence_length=sequence_length, window_size=window_size)
+val_ds = CustomDataset(files=val_files, labels = val_labels, input_size=input_size, sequence_length=sequence_length, window_size=window_size)
 val_dl = DataLoader(val_ds, batch_size=train_batch_size, shuffle=True)
 
 print(len(train_ds), len(val_ds))
 
-model = MiniTransformer(input_size=input_size, output_size=14, embed_size=128, hidden_size=hidden_state_size, num_heads=8, max_sequence_length=250, num_layers=num_layers)
+model = MiniTransformer(input_size=input_size, output_size=output_size, embed_size=128, hidden_size=hidden_state_size, num_heads=8, max_sequence_length=250, num_layers=num_layers)
 
 model = model.to(device)
 
@@ -85,15 +124,19 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0
 # scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_dl), epochs=epochs)
 
 def loss_fn(out, targ, mask):
-    loss1 = F.binary_cross_entropy(torch.sigmoid(out[:, :, :1]), targ[:, :, :1], reduction='none') + F.binary_cross_entropy(torch.sigmoid(out[:, :, 7:8]), targ[:, :, 7:8], reduction='none')
+    per_rect = 7
+    extract_idx = [torch.arange(per_rect*0, per_rect*1, dtype=torch.long, device=device), torch.arange(per_rect*1, per_rect*2, dtype=torch.long, device=device), torch.arange(per_rect*2, per_rect*3, dtype=torch.long, device=device), torch.arange(per_rect*3, per_rect*4, dtype=torch.long, device=device)]
+    reconstruction_loss = None
 
-    loss2 = F.binary_cross_entropy(torch.sigmoid(out[:, :, 1:2]), targ[:, :, 1:2], reduction='none') + F.binary_cross_entropy(torch.sigmoid(out[:, :, 8:9]), targ[:, :, 8:9], reduction='none')
+    loss1 = F.binary_cross_entropy(torch.sigmoid(out[:, :, :1]), targ[:, :, :1], reduction='none') + F.binary_cross_entropy(torch.sigmoid(out[:, :, 7:8]), targ[:, :, 7:8], reduction='none') + F.binary_cross_entropy(torch.sigmoid(out[:, :, 14:15]), targ[:, :, 14:15], reduction='none') # + F.binary_cross_entropy(torch.sigmoid(out[:, :, 21:22]), targ[:, :, 21:22], reduction='none')
+
+    loss2 = F.binary_cross_entropy(torch.sigmoid(out[:, :, 1:2]), targ[:, :, 1:2], reduction='none') + F.binary_cross_entropy(torch.sigmoid(out[:, :, 8:9]), targ[:, :, 8:9], reduction='none') + F.binary_cross_entropy(torch.sigmoid(out[:, :, 15:16]), targ[:, :, 15:16], reduction='none') # + F.binary_cross_entropy(torch.sigmoid(out[:, :, 22:23]), targ[:, :, 22:23], reduction='none')
 
 
-    loss3 = F.mse_loss(out[:, :, 2:4], targ[:, :, 2:4], reduction='none') + F.mse_loss(out[:, :, 9:11], targ[:, :, 9:11], reduction='none')
+    loss3 = F.mse_loss(out[:, :, 2:4], targ[:, :, 2:4], reduction='none') + F.mse_loss(out[:, :, 9:11], targ[:, :, 9:11], reduction='none') + F.mse_loss(out[:, :, 16:18], targ[:, :, 16:18], reduction='none') # + F.mse_loss(out[:, :, 23:25], targ[:, :, 23:25], reduction='none')
     loss3 = torch.sum(loss3, dim=-1).unsqueeze(-1)
 
-    loss4 = F.mse_loss(out[:, :, 4:7], targ[:, :, 4:7], reduction='none') + F.mse_loss(out[:, :, 11:], targ[:, :, 11:], reduction='none')
+    loss4 = F.mse_loss(out[:, :, 4:7], targ[:, :, 4:7], reduction='none') + F.mse_loss(out[:, :, 11:14], targ[:, :, 11:14], reduction='none') + F.mse_loss(out[:, :, 18:21], targ[:, :, 18:21], reduction='none') # + F.mse_loss(out[:, :, 25:], targ[:, :, 25:], reduction='none')
     loss4 = torch.sum(loss4, dim=-1).unsqueeze(-1)
     
     return loss1, loss2, loss3, loss4
@@ -157,15 +200,12 @@ for epoch in range(epochs):
                     mask = mask.to(device)
                     fsw = fsw.to(device)
 
-                    # print(inp.shape, targ.shape, mask.shape, fsw.shape)
-
                     anim_idx = min(anim_idx, inp.shape[0]-1)
 
                     out = model(inp, src_mask=src_mask)
 
                     loss1, loss2, loss3, loss4 = loss_fn(out, targ, mask)
                     loss = (loss1 + loss2 + loss3 + loss4)
-                    # print(out.shape, loss.shape)
                     loss = torch.sum(loss*mask)/torch.sum(mask)
 
                     val_total_loss += loss.item()

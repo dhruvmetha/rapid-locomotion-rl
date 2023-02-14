@@ -5,7 +5,7 @@ from pathlib import Path
 from matplotlib import patches as pch
 from matplotlib import pyplot as plt
 from matplotlib import animation
-
+from indep_model.config import *
 FFwriter = animation.FFMpegWriter
 
 def get_visualization(idx, obs, priv_obs, pred, fsw):
@@ -18,8 +18,13 @@ def get_visualization(idx, obs, priv_obs, pred, fsw):
     for _ in range(4):
         patch_set.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588/2, 0.22/2]), width=0.588, height=0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
                         
-    for i in range(2):
+    for i in range(RECTS):
         j = i*7 + 2
+
+        
+        contact = torch.sigmoid(priv_obs[idx][j-2])
+        alpha = 0.3 if contact.item() < 0.5 else 0.6
+        movable = torch.sigmoid(priv_obs[idx][j-1])
 
         pos, pos_pred, pos_fsw = priv_obs[idx][j:j+2], pred[idx][j:j+2], fsw[idx][j:j+2]
         angle, angle_pred, angle_fsw = torch.rad2deg(priv_obs[idx][j+2:j+3]), torch.rad2deg(pred[idx][j+2:j+3]), torch.rad2deg(fsw[idx][j+2:j+3])
@@ -34,12 +39,12 @@ def get_visualization(idx, obs, priv_obs, pred, fsw):
             block_color_fsw = 'yellow'
         
         pred_block_color = 'blue'
-        if pred[idx][j-1] > 0.8:
+        if movable > 0.5:
             pred_block_color = 'orange'
 
         for _ in range(2):
             patch_set.append(pch.Rectangle(pos.cpu() - size.cpu()/2, *(size.cpu()), angle=angle.cpu(), rotation_point='center', facecolor=block_color, label=f'true_mov_{i}'))
-            patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=0.5, label=f'pred_mov_{i}'))
+            patch_set.append(pch.Rectangle(pos_pred.cpu() - size_pred.cpu()/2, *(size_pred.cpu()), angle=angle_pred.cpu(), rotation_point='center', facecolor=pred_block_color, alpha=alpha, label=f'pred_mov_{i}'))
             patch_set.append(pch.Rectangle(pos_fsw.cpu() - size_fsw.cpu()/2, *(size_fsw.cpu()), angle=angle_fsw.cpu(), rotation_point='center', facecolor=block_color_fsw, label=f'fsw_mov_{i}'))
 
     return patch_set
@@ -83,7 +88,7 @@ def get_animation(patches):
         ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted')
         ax[3].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='full seen world')
         
-        for i in range(2):
+        for i in range(RECTS):
             j = i*6 + 4
             ax[0].add_patch(frame[j])
             ax[0].add_patch(frame[j+1])

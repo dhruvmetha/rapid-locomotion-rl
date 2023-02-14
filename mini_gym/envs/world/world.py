@@ -153,6 +153,7 @@ class WorldAsset():
         self.all_train_ids = torch.arange(0, self.num_train_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
         self.all_eval_ids = torch.arange(self.num_train_envs, self.num_envs, 1, dtype=torch.long, device=self.device).view(-1, 1)
 
+        self.base_positions = torch.zeros(self.num_envs, 3, device=self.device)
 
         self.reset_timer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device) + self.reset_timer_count
         self.last_obs = None
@@ -178,7 +179,8 @@ class WorldAsset():
 
                 sizes = [j() for j in i['size'][idx]]
                 volume = np.prod(sizes)
-                density = 1./volume
+                mass = np.random.uniform(0.5, 0.8)
+                density = mass/volume
 
                 if 'fixed' in name:
                     asset_options.density = i['density'][idx]
@@ -189,6 +191,7 @@ class WorldAsset():
                 final_name = name if env_id < self.num_train_envs else name + '_eval'
                 
                 self.block_size[env_id, self.asset_idx_map[final_name], :] = torch.tensor(sizes[:2])
+                self.block_weight[env_id, self.asset_idx_map[final_name], :] = torch.tensor(mass)
                 asset_names.append(final_name)
                 
                 asset_pos.append(i['pos'][idx])
@@ -284,6 +287,8 @@ class WorldAsset():
         env_origins = []
         env_asset_bool = []
         self.env_asset_bool[env_ids, :, :] = False
+        if self.last_obs is not None:
+            self.last_obs[env_ids, :,] = 0.
 
         for env_id in env_ids:
             env_id = env_id.item()
@@ -298,7 +303,7 @@ class WorldAsset():
             in_indices = []
             assets_marked = []
 
-            current_ctr = 0
+            current_ctr = 1
 
             for idx, asset_container in enumerate(assets_container):
                 mv_size = None
@@ -312,15 +317,17 @@ class WorldAsset():
                     actor_indices.append(self.gym.find_actor_index(env_handle, asset.name, gymapi.DOMAIN_SIM))
                     env_origins.append(self.env_origins[env_id])
                     assets_marked.append(asset.name)
-                    self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] = torch.arange(0, self.per_rect, dtype=torch.long, device=self.device)
-
+                    # self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] = torch.arange(0, self.per_rect, dtype=torch.long, device=self.device)
+                    
                     if idx == random_idx:
 
-                        if asset.name.startswith('movable_block'):
+                        if 'movable' in asset.name:
                             self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] = torch.arange(0, self.per_rect, dtype=torch.long, device=self.device)
-                        elif asset.name.startswith('fixed_block'):
-                            self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] = torch.arange(self.per_rect, int(self.per_rect*2), dtype=torch.long, device=self.device)
+                        elif 'fixed' in asset.name:
+                            self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] = torch.arange(self.per_rect*current_ctr, int(self.per_rect*(current_ctr+1)), dtype=torch.long, device=self.device)
 
+                            current_ctr += 1
+                        # print(asset.name, self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :])
 
                         # self.env_asset_ctr[env_id, self.asset_idx_map[asset.name], :] += self.per_rect*current_ctr
                         
@@ -338,7 +345,10 @@ class WorldAsset():
                             mv_size = (mv_size_x, mv_size_y)
 
                             base_positions.append(movable_bp)
+                            self.base_positions[env_id, 0] = movable_bp[0]
+                            self.base_positions[env_id, 1] = movable_bp[1]
                             fb_three_bool[0] = True
+                            # print('assign', self.base_positions[env_id, :], movable_bp)
 
                         elif asset.name.startswith('fb_three_fix'):
                             
@@ -372,6 +382,10 @@ class WorldAsset():
 
                             movable_asset_name = asset.name
                             mv_size = (mv_size_x, mv_size_y)
+                            self.base_positions[env_id, 0] = movable_bp[0]
+                            self.base_positions[env_id, 1] = movable_bp[1]
+
+                            # print('assign', self.base_positions[env_id, :], movable_bp)
 
                             base_positions.append(movable_bp)
                             bb_three_bool[0] = True
@@ -408,7 +422,10 @@ class WorldAsset():
                             movable_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-mv_y_range, mv_y_range]), 2), 0.2]
                             movable_asset_name = asset.name
 
+                            self.base_positions[env_id, 0] = movable_bp[0]
+                            self.base_positions[env_id, 1] = movable_bp[1]
                             base_positions.append(movable_bp)
+                            # print('assign', self.base_positions[env_id, :], movable_bp)
 
                         elif asset.name == world_cfg.fixed_block.name or asset.name.startswith('fixed_block'):
                             fx_size_y = self.block_size[env_id, self.asset_idx_map[asset.name], 1].item()
@@ -425,18 +442,19 @@ class WorldAsset():
                             else:
                                 fixed_bp = [round(np.random.uniform(*[0.7, 2.0]), 2), round(np.random.uniform(*[-fx_y_range, fx_y_range]), 2), 0.2]
                             base_positions.append(fixed_bp)
-                        
+
                         else:
                             base_positions.append(asset.base_position)
                     
                         # current_ctr += 1
 
+                        # if 'movable' in asset.name:
+                        #     self.base_positions[env_id, 0] = movable_bp[0]
+                        #     self.base_positions[env_id, 1] = movable_bp[1]
+
                     else:
-                        base_positions.append([bp - 100000.0 for bp in asset.base_position])
+                        base_positions.append([bp - 100000.0 - np.random.uniform(0, 1000) for bp in asset.base_position])
                     
-                    
-                    
-            
         actor_indices = torch.tensor(actor_indices, dtype=torch.long, device='cuda:0')
         base_positions = torch.tensor(base_positions, dtype=torch.float32, device='cuda:0')
 
@@ -456,7 +474,7 @@ class WorldAsset():
         ids = []
         block_actor_handles = []
         ids_contact = []
-        all_obs = torch.zeros((self.num_envs, PER_RECT*2), dtype=torch.float, device=self.device)
+        all_obs = torch.zeros((self.num_envs, PER_RECT*RECTS), dtype=torch.float, device=self.device)
         full_seen_obs = torch.zeros_like(all_obs)
         if self.last_obs is None:
             self.last_obs = torch.zeros_like(all_obs) 
@@ -485,18 +503,29 @@ class WorldAsset():
 
             # print(angle.shape, (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).shape)
 
-            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] += (torch.cat([torch.tensor([1, movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), angle.view(-1, 1), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] += (torch.cat([torch.tensor([1, movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), angle.view(-1, 1), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone(), self.block_weight[curr_env_ids, self.asset_idx_map[name], :]], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
 
-            full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] += (torch.cat([torch.tensor([1, movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), angle.view(-1, 1), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone()], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
+            full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] += (torch.cat([torch.tensor([1, movable_indicator], device=self.device).repeat(len(curr_env_ids), 1), (self.all_root_states[ids, :2] - self.env_origins[curr_env_ids, :2]).clone(), angle.view(-1, 1), self.block_size[curr_env_ids, self.asset_idx_map[name], :].clone(), self.block_weight[curr_env_ids, self.asset_idx_map[name], :]], dim=-1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]])
+
+
             
-            # if self.train_eval_assets[name] and self.env_asset_bool[curr_env_ids[0], self.asset_idx_map[name]]:
-            #     if torch.linalg.norm(all_obs[curr_env_ids.view(-1, 1)[0], -8:]) > 0:
-            #         print(self.all_train_ids, self.all_eval_ids)
-            #         quit()
-
             contact_forces = self.all_contact_forces[ids_contact]
-            block_contact_buf = (torch.linalg.norm(self.all_contact_forces[ids_contact, :2], dim=-1) > 0.1).view(-1, 1) * (self.reset_timer[curr_env_ids] == 0).view(-1, 1) # * (torch.linalg.norm(full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] - self.last_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]], dim=-1) > 0.05).view(-1, 1)
+            block_contact_buf = (torch.linalg.norm(self.all_contact_forces[ids_contact, :2], dim=-1) > 0.1).view(-1, 1) 
+            block_contact_buf_1 = (torch.linalg.norm(self.all_contact_forces[ids_contact, :2], dim=-1) > 0.1).view(-1, 1) 
+            
+            
+            moved_buf = ((torch.linalg.norm(full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:5] - self.last_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:5], dim=-1) > 0.0005).view(-1, 1)) * (((torch.sum((self.last_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] > 0) * 1.0, dim=-1)) > 0)).view(-1, 1)
+            
+            block_contact_buf = block_contact_buf | moved_buf
+            
 
+            if movable_indicator:
+                
+                moved_from_base = (torch.linalg.norm(full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:4] - self.base_positions[curr_env_ids, :2], dim=-1) > 0.0005).view(-1, 1) * (self.reset_timer[curr_env_ids] == 0).view(-1, 1)
+                block_contact_buf = block_contact_buf | moved_from_base  
+
+            block_contact_buf *= (self.reset_timer[curr_env_ids] == 0).view(-1, 1)
+            
             one_touch_bcb = block_contact_buf | (self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :] & ONE_TOUCH_MAP)
             self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] = (~one_touch_bcb) * self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :]
             self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :] = self.block_contact_ctr[curr_env_ids, self.asset_idx_map[name], :] < self.contact_memory_time
@@ -504,73 +533,14 @@ class WorldAsset():
             
             all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]] *= (self.variables['full_info'] | self.block_contact_buf[curr_env_ids, self.asset_idx_map[name], :])
 
-            # all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][:, 2:4]] * 
 
             # if not ONE_TOUCH_MAP:
-            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][:, :1]] *= block_contact_buf
-            # print(all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][:, :1]], all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][:, 4:5]])
-
-            # self.env_asset_ctr[curr_env_ids, :] += 10*(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1))
-
-            ind = self.block_contact_buf[curr_env_ids, self.asset_idx_map[name]] * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]]
-            # print(all_obs[curr_env_ids].shape)
-            # print(all_obs[curr_env_ids[ind.view(-1)]])
-            if torch.sum(ind) > 0:
-                check_obs = all_obs[(curr_env_ids[ind.view(-1)]).view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][ind.view(-1), :]]
-                checker = torch.sum(check_obs, dim=-1) == 0
-                if checker.sum() > 0:
-                    print("##################")
-                    print(check_obs[checker])
-            # print(all_obs[curr_env_ids[ind.view(-1)], self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][ind.view(-1), :]])
-            # print(full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:4].shape)
-            # print(self.last_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:4].shape)
-            
-            diff = torch.round(full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:4] - self.last_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]][:, 2:4], decimals=3)
-
-            _change = (torch.linalg.norm(diff, dim=-1) > 0).view(-1, 1) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1, 1) * (torch.sum(full_seen_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]], dim=-1).view(-1, 1) > 0) * (torch.sum(self.last_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]]], dim=-1).view(-1, 1) > 0)
-
-            # print(_change.shape, ind.shape)
-            
-            # print(_change)
-            # * (torch.sum(full_seen_obs[curr_env_ids, :], dim=-1) > 0) * self.env_asset_bool[curr_env_ids, self.asset_idx_map[name]].view(-1))
-
-            if _change.sum() > 0:
-                change_ind  = _change * ind
-                # print(change_ind.shape)
-                if change_ind.sum() > 0:
-                    check_obs = all_obs[(curr_env_ids[change_ind.view(-1)]).view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][change_ind.view(-1), :]]
-                    checker = torch.sum(check_obs[:, 2:4], dim=-1) == 0
-                    if checker.sum() > 0:
-                        print("##################")
-                        print(check_obs[checker])
-
-
-            # # print((torch.linalg.norm(torch.round(full_seen_obs[curr_env_ids, 2:4] - self.last_obs[curr_env_ids, 2:4], decimals=2), dim=-1) > 0), torch.sum(self.last_obs[curr_env_ids, :], dim=-1), (torch.sum(self.last_obs[curr_env_ids, :], dim=-1) > 0))
-            # # print(torch.round(full_seen_obs[curr_env_ids, 2:4] - self.last_obs[curr_env_ids, 2:4], decimals=3), full_seen_obs[curr_env_ids, 2:4], self.last_obs[curr_env_ids, 2:4], _change)
-            
-            # _no_obs = (torch.sum(all_obs[curr_env_ids][_change, 2:4], dim=-1) == 0)
-            # _no_obs = (torch.sum(all_obs[curr_env_ids], dim=-1) == 0) * _change
-            # print("############################")
-            # print(_no_obs.shape)
-            # if _no_obs.size(0) > 0:
-            #     _no_obs *= (self.reset_timer[curr_env_ids][_change] == 0)
-            #     print(_no_obs.shape)
-            #     if _no_obs.sum() > 0:
-            #         if 'movable' in name:
-            #             print("############################")
-            #             print(_no_obs)
-            #             print((self.all_root_states[ids, 0]))
-            #             print(self.env_asset_bool[curr_env_ids, self.asset_idx_map[name], :])
-            #             print(name)
-            #             # print(contact_forces.shape, ids_contact.shape, _no_obs.shape)
-            #             print(contact_forces[_no_obs.nonzero()[:, 0]])
-            #             print(block_contact_buf[_no_obs.nonzero()[:, 0]], self.block_contact_buf[_no_obs.nonzero()[:, 0], self.asset_idx_map[name], :])
-
-            #             print(all_obs[curr_env_ids][_no_obs.nonzero()[:, 0], 2:5])
+            all_obs[curr_env_ids.view(-1, 1), self.env_asset_ctr[curr_env_ids, self.asset_idx_map[name]][:, :1]] *= block_contact_buf_1
 
         if not self.variables['full_info']:
             all_obs *= (self.reset_timer == 0).view(-1, 1)
             self.reset_timer[:] -= (self.reset_timer[:] > 0).int()
 
         self.last_obs[:, :] = full_seen_obs[:, :]
+        # print('obs', full_seen_obs[1, :4], all_obs[1, :4])
         return all_obs, full_seen_obs

@@ -15,6 +15,7 @@ from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
 
 from high_level_policy import *
+from tqdm import tqdm
 
 from matplotlib import pyplot as plt
 from matplotlib import patches as pch
@@ -62,16 +63,16 @@ class RunnerArgs(PrefixProto, cli=False):
     max_iterations = 1500  # number of policy updates
 
     # logging
-    save_interval = 200  # check for potential saves every this many iterations
-    save_video_interval = 60
+    save_interval = 50  # check for potential saves every this many iterations
+    save_video_interval = 40
     save_anim_interval = 3
-    log_freq = 50
+    log_freq = 10   
     start_save_plot = 0
     save_plot_interval = 125
     # load and resume
-    resume = False
+    resume = True
     load_run = -1  # -1 = last run
-    checkpoint = '/home/dhruv/projects_dhruv/og_rlvrl/high_level_policy/runs/rapid-locomotion/2022-10-26/high_level_train/013418.804555/checkpoints/ac_weights_last.pt'  # -1 = last saved model
+    checkpoint = '/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_full_info_decoder/2023-02-14/high_level_train/183329.086403/checkpoints/ac_weights_last.pt'  # -1 = last saved model
     resume_path = None  # updated from load_run and chkpt
 
 
@@ -90,14 +91,15 @@ class Runner:
                                       ).to(self.device)
 
         if RunnerArgs.resume:
-            print('loading walk model for init...')
+            print('loading model for init...')
             weights = logger.load_torch(RunnerArgs.checkpoint)
             # print(weights.keys())
-            new_weights = {'.'.join(k.split('.')[1:]):v for k,v in weights.items() if k.startswith('critic')}
-            # print(new_weights)
-            actor_critic.critic_body.load_state_dict(state_dict=new_weights)
+            actor_critic.load_state_dict(state_dict=weights)
+            # new_weights = {'.'.join(k.split('.')[1:]):v for k,v in weights.items() if k.startswith('critic')}
+            # # print(new_weights)
+            # actor_critic.critic_body.load_state_dict(state_dict=new_weights)
             # actor_critic.to(env.device)
-            print('successfully loaded walk model...')
+            print('successfully loaded model...')
 
 
         self.alg = PPO(actor_critic, device=self.device)
@@ -107,7 +109,7 @@ class Runner:
         if ENCODER:
             latent_size = LATENT_DIM_SIZE
         else:
-            latent_size = PER_RECT * 2
+            latent_size = PER_RECT * RECTS
 
         # init storage and model
         self.alg.init_storage(self.env.num_train_envs, self.num_steps_per_env, [self.env.num_obs],
@@ -140,7 +142,7 @@ class Runner:
             self.device)
 
         adaptation_hidden_states = torch.zeros(self.env.num_envs, HIDDEN_STATE_SIZE).to(self.device)
-        latent_size = LATENT_DIM_SIZE if (USE_LATENT and ENCODER) else PER_RECT * 2 
+        latent_size = LATENT_DIM_SIZE if (USE_LATENT and ENCODER) else PER_RECT * RECTS 
         latent_teacher_state = torch.zeros(self.env.num_envs, latent_size).to(self.device)
         
         self.alg.actor_critic.train()
@@ -172,7 +174,8 @@ class Runner:
         tot_iter = self.current_learning_iteration + num_learning_iterations
         save_at_iter = RunnerArgs.start_save_plot
         save_at_iter_eval = RunnerArgs.start_save_plot
-        for it in range(self.current_learning_iteration, tot_iter):
+        for it in tqdm(range(self.current_learning_iteration, tot_iter)):
+            self.env.ll_env.world_asset.variables['full_info'] = False # it < 100
             start = time.time()
             # Rollout
             # if self.current_learning_iteration+it % 5 == 0:
@@ -202,8 +205,10 @@ class Runner:
                         (priv_obs_pred, latent_pred), actions_eval = self.alg.actor_critic.act_teacher(obs[num_train_envs:], privileged_obs[num_train_envs:])
                     else:
                         (priv_obs_pred, latent_pred, next_hidden_states_eval), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:], adaptation_hidden_states[num_train_envs:, :])
-                        
-                    if USE_LATENT and DECODER:
+
+                    
+                    if USE_LATENT and DECODER and CREATE_VIZ:
+                        start = time.time()
                         if it >= 0:
 
                             patch_set = []
@@ -211,7 +216,7 @@ class Runner:
                             for _ in range(4):
                                 patch_set.append(pch.Rectangle(pos_rob_eval.cpu().numpy() - np.array([0.588/2, 0.22/2]), width=0.588, height=0.22, angle=angle_rob_eval.cpu(), rotation_point='center', facecolor='green', label='robot'))
                             
-                            for i in range(2):
+                            for i in range(RECTS):
                                 j = i*PER_RECT + 2
 
                                 pos, pos_pred, pos_fsw = privileged_obs[self.random_eval_anim_env][j:j+2], priv_obs_pred[self.random_eval_anim_env][j:j+2], full_seen_world[self.random_eval_anim_env][j:j+2]
@@ -245,9 +250,9 @@ class Runner:
                             patch_set_eval = []
 
                             for _ in range(4):
-                                patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588, 0.22]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
+                                patch_set_eval.append(pch.Rectangle(pos_rob.cpu().numpy() - np.array([0.588/2, 0.22/2]), 0.588, 0.22, angle=angle_rob.cpu(), rotation_point='center', facecolor='green', label='robot'))
                             
-                            for i in range(2):
+                            for i in range(RECTS):
                                 j = i*PER_RECT + 2
 
                                 pos, pos_pred, pos_fsw = privileged_obs[self.random_anim_env][j:j+2], priv_train_pred[self.random_anim_env][j:j+2], full_seen_world[self.random_anim_env][j:j+2]
@@ -275,6 +280,7 @@ class Runner:
 
                                     patch_set_eval.append(pch.Rectangle(pos_fsw.cpu() - size_fsw.cpu()/2, *(size_fsw.cpu()), angle=angle_fsw.cpu(), rotation_point='center', facecolor=fsw_block_color, label=f'seen_mov_{i}'))
                             patches_eval.append(patch_set_eval)
+                        # print('patch_creation', time.time() - start)
 
                     ######
                                             
@@ -411,10 +417,11 @@ class Runner:
                 # mean_eval_adaptation_reconstruction_loss = mean_eval_adaptation_reconstruction_loss,
             )
 
-            if USE_LATENT and DECODER:
+            if USE_LATENT and DECODER and CREATE_VIZ:
+                
 
                 if save_video_anim_eval:
-
+                    start = time.time()
                     try:
                         path = f'{HLP_ROOT_DIR}/tmp/legged_data_{task_inplay}'
                         # if not os.path.exists(path):
@@ -432,9 +439,11 @@ class Runner:
 
                     patches = []
                     save_video_anim_eval = False
+                    # print(f"Saving eval patch took {time.time() - start} seconds")
                     # self.random_eval_anim_env = -1 # np.random.randint(self.env.num_train_envs, self.env.num_envs)
 
                 if save_video_anim:
+                    start = time.time()
                     try:
                         path = f'{HLP_ROOT_DIR}/tmp/legged_data_{task_inplay}_eval/'
                         os.makedirs(path, exist_ok=True)
@@ -447,6 +456,7 @@ class Runner:
                         pass
                     patches_eval = []
                     save_video_anim = False
+                    # print(f"Saving patch took {time.time() - start} seconds")
                     # self.random_anim_env = 0 # np.random.randint(0, self.env.num_envs - self.env.num_train_envs)
                 
             if RunnerArgs.save_video_interval:                
@@ -480,7 +490,6 @@ class Runner:
                     traced_script_body_module = torch.jit.script(body_model)
                     traced_script_body_module.save(body_path)
                     logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
-                    
 
                     if USE_LATENT:
                         adaptation_module_path = f'{path}/adaptation_module_latest.jit'
@@ -488,10 +497,8 @@ class Runner:
                         if not LSTM_ADAPTATION:
                             traced_script_adaptation_module = torch.jit.script(adaptation_module)
                         else:
-                            
                             x = torch.randn(1, ROLLOUT_HISTORY, 37, device='cpu')
                             hidden = torch.zeros(1, 1, HIDDEN_STATE_SIZE,  device='cpu')
-
                             traced_script_adaptation_module = torch.jit.trace(adaptation_module, (x, hidden))
                         
                         traced_script_adaptation_module.save(adaptation_module_path)

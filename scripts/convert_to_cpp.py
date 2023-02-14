@@ -55,6 +55,8 @@ if __name__ == "__main__":
 
     recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/task_pure_rl/*/*/*"), key=os.path.getmtime)
     # print(recent_runs)
+    recent_runs = recent_runs[-1:]
+    print(recent_runs)
     logger.configure(Path(recent_runs[-1]).resolve())
     model, policy = load_env(headless=False)
 
@@ -66,4 +68,5 @@ if __name__ == "__main__":
     traced_script_module = torch.jit.trace(actor_model, example)
     if os.path.exists("./cpp_files") == False:
         os.mkdir("./cpp_files")
-    traced_script_module.save("./cpp_files/walking_push_simple_policy.pt")
+    traced_script_module.save("./cpp_files/walking_push_simple_policy_3obs_65_v1.pt")
+    print('done')

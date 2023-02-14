@@ -11,7 +11,7 @@ from high_level_policy.ppo import ActorCritic
 from high_level_policy.ppo import RolloutStorage
 from high_level_policy.ppo import caches
 
-from high_level_policy import USE_LATENT, ENCODER, DECODER, SKIP_ADAPTATION_ITER, PER_RECT, EVAL_EXPERT
+from high_level_policy import USE_LATENT, ENCODER, DECODER, SKIP_ADAPTATION_ITER, PER_RECT, EVAL_EXPERT, RECTS, START_SAVE_ITER
 
 torch.manual_seed(42)
 
@@ -51,6 +51,7 @@ class PPO:
 
         self.learning_rate = PPO_Args.learning_rate
         self.iters = 0
+        self.collecting_data = False
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape, obs_history_shape,
                      action_shape, adaptation_hidden_size, latent_size):
@@ -124,7 +125,7 @@ class PPO:
         extract_idx = [torch.arange(per_rect*0, per_rect*1, dtype=torch.long, device=self.device), torch.arange(per_rect*1, per_rect*2, dtype=torch.long, device=self.device), torch.arange(per_rect*2, per_rect*3, dtype=torch.long, device=self.device), torch.arange(per_rect*3, per_rect*4, dtype=torch.long, device=self.device)]
         reconstruction_loss = None
         # loss = None
-        for i in extract_idx[:2]:
+        for i in extract_idx[:RECTS]:
             
             loss = F.binary_cross_entropy(F.sigmoid(pred[:, i[0]]), gt[:, i[0]])
             loss += F.binary_cross_entropy(F.sigmoid(pred[:, i[1]]), gt[:, i[1]])
@@ -378,9 +379,15 @@ class PPO:
             else:
                 mean_adaptation_module_loss /= num_updates
                 mean_adaptation_reconstruction_loss /= num_updates
-        self.storage.clear(save=self.iters>=0)
+        
+        if self.iters >= START_SAVE_ITER and not self.collecting_data:
+            print('start collecting data')
+            self.collecting_data = True
+
+        self.storage.clear(save=self.iters>=START_SAVE_ITER)
 
         self.iters += 1
+        
 
         return mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss
 

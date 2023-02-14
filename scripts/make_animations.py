@@ -6,16 +6,16 @@ import os
 from tqdm import tqdm 
 from pathlib import Path
 import time
-from high_level_play import task_inplay
+from high_level_play import task_inplay, RECTS
 FFwriter = animation.FFMpegWriter
 
 
 # RECENT_MODEL = sorted(glob.glob(f"/common/home/dm1487/robotics_research/legged_manipulation/experimental/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)[-1]
 RECENT_MODEL = sorted(glob.glob(f"./high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
 
-# RECENT_MODEL = "/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_teacher_decoder/2023-01-27/high_level_train/210752.597531"
-source_folder = f"{RECENT_MODEL}/plots"
-dest_folder = f"{RECENT_MODEL}/animations"
+# RECENT_MODEL = "/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_teacher_decoder/2023-02-13/high_level_train/023242.803256"
+source_folder = f"{RECENT_MODEL}/plots_eval"
+dest_folder = f"{RECENT_MODEL}/animations_eval"
 if not os.path.exists(dest_folder):
     os.makedirs(dest_folder)
 
@@ -25,8 +25,8 @@ def on_new_file(tmp_img_path):
     file_name = Path(tmp_img_path).stem
     # if os.path.exists(f"{dest_folder}/{file_name}.mp4"):
     #     continue
-    fig, ax = plt.subplots(2, 2, figsize=(24, 24))
-    ax = ax.flatten()
+    fig, axes = plt.subplots(2, 2, figsize=(48, 24))
+    ax = axes.flatten()
 
     try:
 
@@ -53,12 +53,12 @@ def on_new_file(tmp_img_path):
         ax[2].add_patch(robot_2)
         ax[3].add_patch(robot_3)
 
-        ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all')
-        ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth')
-        ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted')
-        ax[3].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='full seen world')
+        ax[0].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='all', aspect='auto')
+        ax[1].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='truth', aspect='auto')
+        ax[2].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='predicted', aspect='auto')
+        ax[3].set(xlim=(-1.0, 4.0), ylim=(-1, 1), title='full seen world', aspect='auto')
         
-        for i in range(2):
+        for i in range(RECTS):
             j = i*6 + 4
             ax[0].add_patch(frame[j])
             ax[0].add_patch(frame[j+1])

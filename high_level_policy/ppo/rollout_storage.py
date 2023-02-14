@@ -10,6 +10,47 @@ from datetime import datetime
 import pickle
 import time
 import numpy as np
+import threading
+import queue
+
+# thread that consumes the data from the queue to save to disk
+class Worker(threading.Thread):
+    def __init__(self, queue, fn):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.data_path = Path(f'/common/users/dm1487/legged_manipulation_data/rollout_data/{SAVE_ADAPTATION_DATA_FILE_NAME}')
+        # make directory `data_path` if it doesn't exist
+        self.data_path.mkdir(parents=True, exist_ok=True)
+
+
+
+        self.lock = threading.Lock()
+        self.print = fn
+
+    def run(self):
+        while True:
+            # get the next item from the queue
+            # print('heree')
+            item = self.queue.get()
+            
+            # self.lock.acquire()
+            # try: 
+            #     self.print('here')
+            #     self.print(len(item))
+            # finally:
+            #     self.lock.release()
+
+            # save the data
+            for k, v in item.items():
+                if isinstance(v, torch.Tensor):
+                    item[k] = v.cpu().numpy()
+            np.savez_compressed(self.data_path/f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz', **item)
+            
+            # with open(SAVE_ADAPTATION_DATA_FILE_NAME, 'wb') as f:
+            #     pickle.dump(item, f)
+
+            # send a signal to the queue that the job is done
+            self.queue.task_done()
 
 
 class RolloutStorage:
@@ -69,6 +110,13 @@ class RolloutStorage:
         self.num_transitions_per_env = num_transitions_per_env
         self.num_envs = num_envs
 
+
+        if SAVE_ADAPTATION_DATA:
+            self.q = queue.Queue(maxsize=200)
+            self.worker = Worker(self.q, fn=print)
+            self.worker.start()
+            self.q.join()
+
         self.step = 0
 
     def add_transitions(self, transition: Transition):
@@ -95,25 +143,31 @@ class RolloutStorage:
         if save and SAVE_ADAPTATION_DATA:
             # create a dictionary of the data to save
             # print('saving data')
+            # start = time.time()
             data = {
-                'observations': self.observations.cpu().numpy(),
-                'privileged_observations': self.privileged_observations.cpu().numpy(),
-                'observation_histories': self.observation_histories[:, :, -(self.observation_histories.shape[1]//ROLLOUT_HISTORY):].cpu().numpy(),
-                'full_seen_world': self.full_seen_world.cpu().numpy(),
-                'dones': self.dones.cpu().numpy()
+                'observations': self.observations.clone(),
+                'privileged_observations': self.privileged_observations.clone(),
+                'observation_histories': self.observation_histories[:, :, -(self.observation_histories.shape[2]//ROLLOUT_HISTORY):].clone(),
+                'full_seen_world': self.full_seen_world.clone(),
+                'dones': self.dones.clone()
             }
+
+            self.q.put(data)
             
-            data_path = Path(f'/common/users/dm1487/legged_manipulation_data/rollout_data/{SAVE_ADAPTATION_DATA_FILE_NAME}')
+            # data_path = Path(f'/common/users/dm1487/legged_manipulation_data/rollout_data/{SAVE_ADAPTATION_DATA_FILE_NAME}')
 
             # make directory `data_path` if it doesn't exist
-            data_path.mkdir(parents=True, exist_ok=True)
+            # data_path.mkdir(parents=True, exist_ok=True)
 
-            np.savez_compressed(data_path/f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz', **data)
+            # np.savez_compressed(data_path/f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz', **data)
+
+            # print(time.time()-start)
 
             # # save data to file using timestamp as name in `data_path` folder using pickle
             # with open(data_path / f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pkl', 'wb') as f:
             #     pickle.dump(data, f)
         self.step = 0
+        
 
     def compute_returns(self, last_values, gamma, lam):
         advantage = 0

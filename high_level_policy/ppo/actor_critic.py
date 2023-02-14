@@ -25,12 +25,12 @@ class AC_Args(PrefixProto, cli=False):
 
     adaptation_module_branch_hidden_dims = [[4096, 2048, 1024, 512, 256, 128, 64]]
 
-    env_factor_encoder_branch_input_dims = [PER_RECT*2 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_encoder_branch_input_dims = [PER_RECT*RECTS if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_encoder_branch_latent_dims = [LATENT_DIM_SIZE if world_cfg.fixed_block.add_to_obs else 4]
     env_factor_encoder_branch_hidden_dims = [[256, 128]]
 
     env_factor_decoder_branch_input_dims = [LATENT_DIM_SIZE if world_cfg.fixed_block.add_to_obs else 4]
-    env_factor_decoder_branch_latent_dims = [PER_RECT*2 if world_cfg.fixed_block.add_to_obs else 9]
+    env_factor_decoder_branch_latent_dims = [PER_RECT*RECTS if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_decoder_branch_hidden_dims = [[256, 128]]
 
 
@@ -257,6 +257,7 @@ class ActorCritic(nn.Module):
         for l in range(len(AC_Args.actor_hidden_dims)):
             if l == len(AC_Args.actor_hidden_dims) - 1:
                 actor_layers.append(nn.Linear(AC_Args.actor_hidden_dims[l], num_actions))
+                actor_layers.append(nn.Tanh())
             else:
                 actor_layers.append(nn.Linear(AC_Args.actor_hidden_dims[l], AC_Args.actor_hidden_dims[l + 1]))
                 actor_layers.append(activation)
@@ -306,9 +307,14 @@ class ActorCritic(nn.Module):
         return self.distribution.entropy().sum(dim=-1)
 
     def get_latent_student(self, observation_history, hidden_states=None):
+        
+
         if hidden_states is None:
             hidden_states = torch.zeros(1, observation_history.shape[0], HIDDEN_STATE_SIZE).to(observation_history.device)
                 
+        if not ENCODER:
+            return None, hidden_states
+        
         if not LSTM_ADAPTATION:
             return self.adaptation_module(observation_history), hidden_states.unsqueeze(0)
         else:
@@ -380,7 +386,8 @@ class ActorCritic(nn.Module):
                     full_next_hidden_states = next_hidden_states
                     # print('full_next_hidden_states', full_next_hidden_states.shape)
                 else:
-                    full_latent_student = torch.cat((full_latent_student, latent_student), dim=0)
+                    if latent_student is not None:
+                        full_latent_student = torch.cat((full_latent_student, latent_student), dim=0)
                     full_latent_teacher = torch.cat((full_latent_teacher, latent_teacher), dim=0)
                     # full_priv_obs_pred_student = torch.cat((full_priv_obs_pred_student, priv_obs_pred_student), dim=0)
                     if ENCODER and DECODER:
