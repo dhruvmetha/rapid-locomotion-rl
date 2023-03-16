@@ -1,3 +1,5 @@
+from isaacgym import gymapi
+from PIL import Image
 from ml_logger import logger
 from high_level_policy import *
 
@@ -7,6 +9,47 @@ from matplotlib import patches as pch
 # import matplotlib.animation as animation
 import pickle
 import argparse
+import threading
+import queue
+from datetime import datetime
+
+class Worker(threading.Thread):
+    def __init__(self, queue, fn):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.data_path = Path(f'/common/users/dm1487/legged_manipulation_data/rollout_data/{SAVE_ADAPTATION_DATA_FILE_NAME}')
+        # make directory `data_path` if it doesn't exist
+        self.data_path.mkdir(parents=True, exist_ok=True)
+
+        self.lock = threading.Lock()
+        self.print = fn
+
+    def run(self):
+        while True:
+            # get the next item from the queue
+            # print('heree')
+            item = self.queue.get()
+            
+            # self.lock.acquire()
+            # try: 
+            #     self.print('here')
+            #     self.print(len(item))
+            # finally:
+            #     self.lock.release()
+
+            # save the data
+            for k, v in item.items():
+                item[k] = torch.cat(v, dim=0)
+                # print(item[k].shape)
+                if isinstance(item[k], torch.Tensor):
+                    item[k] = item[k].cpu().numpy()
+            np.savez_compressed(self.data_path/f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz', **item)
+            
+            # with open(SAVE_ADAPTATION_DATA_FILE_NAME, 'wb') as f:
+            #     pickle.dump(item, f)
+
+            # send a signal to the queue that the job is done
+            self.queue.task_done()
 
 def load_env(headless=False):
     from ml_logger import logger
@@ -37,7 +80,7 @@ def load_env(headless=False):
     actor_critic = ActorCritic(
         num_obs=env.num_obs, 
         num_privileged_obs=env.num_privileged_obs,
-        num_obs_history=(env.num_obs+44) * \
+        num_obs_history=(env.num_obs+24) * \
                         ROLLOUT_HISTORY,
         num_actions=env.num_actions)
 
@@ -48,9 +91,11 @@ def load_env(headless=False):
     weights = logger.load_torch("checkpoints/ac_weights_last.pt")
     actor_critic.load_state_dict(state_dict=weights)
     actor_critic.to(env.device)
+    print('here actor_critic')
     policy_student = actor_critic.act_inference
+    print('here policy_student')
     policy_expert = actor_critic.act_inference_expert
-
+    print('here policy_expert')
     return policy_expert, policy_student
 
 def get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred):
@@ -139,70 +184,173 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--num_envs', type=int, default=2500,
+    parser.add_argument('--num_envs', type=int, default=4096,
                         help='the number of environments to run')
     
-    parser.add_argument('--head', action='store_false', default=True,
+    parser.add_argument('--iter', type=int, default=10000,
+                        help='the number of environments to run')
+    
+    parser.add_argument('--head', action='store_true', default=False,
                         help='run in headless mode')
 
     args = parser.parse_args()
 
     num_envs = args.num_envs
-    head = args.head
+    iters = args.iter
+    headless = not args.head
     print(args.num_envs)
-    print(args.head)
+    print(headless)
     all_modes = ["random_motion_policy", "straight_motion_policy", "heuristic_1", "heuristic_2", "main_policy", "teacher_policy", "full_teacher_policy"]
-    mode = all_modes[-1]
+    mode = "teacher_policy"
 
     if mode == "full_teacher_policy":
-        env = create_env(num_envs, head, full_info=True, train_ratio=0.0)
+        env = create_env(num_envs, headless, full_info=True, train_ratio=0.0)
         action_func = full_teacher_policy
     elif mode == "straight_motion_policy":
-        env = create_env(num_envs, head, full_info=True, train_ratio=0.0)
+        env = create_env(num_envs, headless, full_info=True, train_ratio=0.0)
         action_func = straight_motion_policy
     elif mode == "random_motion_policy":
-        env = create_env(num_envs, head, full_info=True, train_ratio=0.0)
+        env = create_env(num_envs, headless, full_info=True, train_ratio=0.0)
         action_func = random_actions_policy
     elif mode == "teacher_policy":
-        env = create_env(num_envs, head, full_info=False, train_ratio=0.0)
+        env = create_env(num_envs, headless, full_info=False, train_ratio=0.99)
         action_func = teacher_policy
     elif mode == "main_policy":
-        env = create_env(num_envs, head, full_info=False, train_ratio=0.0)
+        env = create_env(num_envs, headless, full_info=False, train_ratio=0.0)
         action_func = student_policy
     
 
       
     # env = HighLevelControlWrapper(num_envs=num_envs, headless=head, test=True)
+    
 
-    # recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/rapid-locomotion/*/*/*"), key=os.path.getmtime)
-    model_path = EVAL_MODEL_PATH
+    recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)
+    model_path = recent_runs[-1]
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-18/high_level_train/233250.669431"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-21/high_level_train/103519.121655"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-21/high_level_train/210610.485965"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-23/high_level_train/021407.085820"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-23/high_level_train/222927.684309"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-26/high_level_train/222315.629972"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-26/high_level_train/195203.010990"
+    # model_path = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_teacher_decoder/2023-02-27/high_level_train/190152.158246"
+    print("#################")
+    print(model_path)
     logger.configure(Path(model_path).resolve())
-    policy_expert, policy_student  = load_env(headless=False)
-    plots_path = f"{EVAL_MODEL_PATH}/plots_eval"
 
+    print("#################")
 
-    num_eval_steps = 1000
+    print('configuring logger')
+
+    policy_expert, policy_student  = load_env(headless=headless)
+    plots_path = f"{model_path}/plots_eval"
+
+    num_eval_steps = iters
     obs = env.reset()
+
+    # print(obs)
     import torch
 
-    # for i in tqdm(range(num_eval_steps)):
-    #     with torch.no_grad():
-    #         _, actions = policy_expert(obs)
-    #     obs, rew, done, info = env.step(actions)
-    # print(info['train/success'], info['train/failure'])
-    # print(info['train/success_rate'])
-    # print(info['train/ep_length']/info['train/env_count'])
-    # obs = env.reset()
+    if SAVE_ADAPTATION_DATA:
+
+        q = queue.Queue(maxsize=200)
+        worker = Worker(q, fn=print)
+        worker.start()
+        q.join()
+
     patches = []
+    data = {
+        "obs_data" : [],
+        "priv_obs_data" : [],
+        "obs_hist_data" : [],
+        "fsw_data" : [],
+        "done_data" : []
+    }
+
+    print(env.ll_env.full_seen_world.shape)
+    
+
+    env.ll_env.start_recording()
     for i in tqdm(range(num_eval_steps)):
-        # obs_truth = obs['obs'][0]
+        # obs_truth = obs['obs'][0] 
         # priv_obs_truth = obs['privileged_obs'][0]
+        # print(obs['privileged_obs'][0])
+
+        
+
         with torch.no_grad():
             priv_obs_pred_all, actions = policy_expert(obs)
         # priv_obs_pred = priv_obs_pred_all[0]
         # patch_set = get_patch_set(obs_truth, priv_obs_truth, priv_obs_pred)
         # patches.append(patch_set)
         obs, rew, done, info = env.step(actions)
+        
+        bx = env.ll_env.env_origins[env.ll_env.num_envs -1][0] # obs['obs'][-1, 0]
+        by = env.ll_env.env_origins[env.ll_env.num_envs -1][1] # obs['obs'][-1, 1]
+        bz = 0.0
+
+        env.ll_env.gym.set_camera_location(env.ll_env.rendering_camera_eval, env.ll_env.envs[env.ll_env.num_envs-1],
+                                            gymapi.Vec3(bx+1.0, by, bz + 3.2),
+                                            gymapi.Vec3(bx+1.2, by, 0.5))
+        frame = env.ll_env.gym.get_camera_image(env.ll_env.sim, env.ll_env.envs[env.ll_env.num_envs-1],
+                                                                env.ll_env.rendering_camera_eval,
+                                                                gymapi.IMAGE_COLOR)
+
+        # print(frame.shape)
+        
+        # img = Image.fromarray(frame).resize((368, 240))
+        # logger.save_image(img, f"env_images/test_sample/{i:05d}.png")
+
+        # env.reset()
+        
+        # plt.imshow(frame)
+        # plt.show()
+
+        if done[0]:
+            frames = env.ll_env.get_complete_frames()
+            print("done", len(frames))
+            if len(frames) > 0:
+                env.ll_env.pause_recording()
+                logger.save_video(frames, f"play_videos/{i:05d}.mp4", fps=1 / env.ll_env.dt)
+                env.ll_env.start_recording()
+
+        # if done[0]:
+        #     print(obs['obs'][0])
+        #     print(obs['privileged_obs'][0])
+        #     print(env.ll_env.full_seen_world.unsqueeze(0).clone()[0, 0])
+        #     print(obs['obs_history'][0, -36:-34])
+        
+        if SAVE_ADAPTATION_DATA:
+
+            data['obs_data'].append(obs['obs'].unsqueeze(0).clone())
+            data['priv_obs_data'].append(obs['privileged_obs'].unsqueeze(0).clone())
+            data['obs_hist_data'].append(obs['obs_history'][:, -36:].unsqueeze(0).clone())
+            data['fsw_data'].append(env.ll_env.full_seen_world.unsqueeze(0).clone())
+            data['done_data'].append(done.view(-1, 1).unsqueeze(0).clone())
+
+            if i == 0:
+                print(data['fsw_data'][-1].shape)
+                print(data['priv_obs_data'][-1].shape)
+                print(data['obs_hist_data'][-1].shape)
+                print(data['obs_data'][-1].shape)
+
+            if (i+1)%25 == 0:
+                q.put(data)
+                data = {
+                    "obs_data" : [],
+                    "priv_obs_data" : [],
+                    "obs_hist_data" : [],
+                    "fsw_data" : [],
+                    "done_data" : []
+                }
+
+        if done.nonzero().size(0) > 0:
+            env.reset_obs_history(done.nonzero())
+        # print(env.ll_env.full_seen_world.shape)
+        # print(env.ll_env.full_seen_world[0])
+        # print(env.ll_env.full_seen_world.shape)
+        # print(obs['obs'][0])
+        
         # print(obs['obs'][0, 0])
         # print((obs['obs'][:, 0] > 3.5).nonzero())
 
@@ -215,5 +363,12 @@ if __name__ == "__main__":
 
     # print(info['train/episode']['success'])
     # print(info['train/episode']['success'], info['train/episode']['failure'])
-    print(info['train/episode']['success_rate'])
+    print(info)
+    if 'success_rate' in info['train/episode']:
+        print('train success rate', info['train/episode']['success_rate'])
+    if 'success_rate' in info['eval/episode']:
+        print('eval success rate', info['eval/episode']['success_rate'])
+
     # print(info['train/episode']['ep_length']/info['train/episode']['env_count'])
+
+

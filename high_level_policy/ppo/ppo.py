@@ -8,6 +8,7 @@ import numpy as np
 from params_proto import PrefixProto
 
 from high_level_policy.ppo import ActorCritic
+# from high_level_policy.ppo import ActorCriticRecurrent
 from high_level_policy.ppo import RolloutStorage
 from high_level_policy.ppo import caches
 
@@ -36,15 +37,21 @@ class PPO_Args(PrefixProto):
 class PPO:
     actor_critic: ActorCritic
 
-    def __init__(self, actor_critic, device='cpu'):
+    def __init__(self, actor_critic, forward_model=None, device='cpu'):
 
         self.device = device
 
         # PPO components
         self.actor_critic = actor_critic
         self.actor_critic.to(device)
+
+        # self.fm = forward_model
+        # self.fm.to(device)
+
+        params = list(self.actor_critic.parameters())
+
         self.storage = None  # initialized later
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=PPO_Args.learning_rate)
+        self.optimizer = optim.Adam(params, lr=PPO_Args.learning_rate)
         self.adaptation_module_optimizer = optim.Adam(self.actor_critic.parameters(),
                                                       lr=PPO_Args.adaptation_module_learning_rate)
         self.transition = RolloutStorage.Transition()
@@ -104,7 +111,6 @@ class PPO:
     def compute_returns(self, last_critic_obs, last_critic_privileged_obs, **kwargs):
         last_values = self.actor_critic.evaluate(last_critic_obs, last_critic_privileged_obs, **kwargs).detach()
         self.storage.compute_returns(last_values, PPO_Args.gamma, PPO_Args.lam)
-
 
     def decoder_loss(self, gt, pred):
         
@@ -206,12 +212,14 @@ class PPO:
         mean_reconstruction_loss = 0
         mean_adaptation_module_loss = 0
         mean_adaptation_reconstruction_loss = 0
+        mean_curiosity_loss = 0
         old_adaptation_target = None
 
         mean_entropy_loss = 0
         mean_kl = 0
 
-        generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
+        # generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
+        generator = self.storage.recurrent_mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, masks_batch, env_bins_batch in generator:
 
@@ -226,6 +234,17 @@ class PPO:
             sigma_batch = self.actor_critic.action_std
             entropy_batch = self.actor_critic.entropy
 
+
+            # fm_obs = torch.cat([obs_batch[:, :-3], privileged_obs_batch[:, int(PER_RECT*0 + 2):int(PER_RECT*0 + PER_RECT)], privileged_obs_batch[:, int(PER_RECT*1 + 2):int(PER_RECT*1 + PER_RECT)], privileged_obs_batch[:, int(PER_RECT*2 + 2):int(PER_RECT*2 + PER_RECT)], actions_batch], dim=-1)[:-1]
+
+            # fm_obs_next = torch.cat([obs_batch[:, :-3], privileged_obs_batch[:, int(PER_RECT*0 + 2):int(PER_RECT*0 + PER_RECT)], privileged_obs_batch[:, int(PER_RECT*1 + 2):int(PER_RECT*1 + PER_RECT)], privileged_obs_batch[:, int(PER_RECT*2 + 2):int(PER_RECT*2 + PER_RECT)]], dim=-1)[1:]
+            
+            # fm_obs_pred = self.fm(fm_obs)
+
+            # curiosity_loss = nn.MSELoss()(fm_obs_pred, fm_obs_next)
+            # mean_curiosity_loss += curiosity_loss.item()
+
+            
             # KL
             if PPO_Args.desired_kl != None and PPO_Args.schedule == 'adaptive':
                 with torch.inference_mode():
@@ -263,7 +282,7 @@ class PPO:
             else:
                 value_loss = (returns_batch - value_batch).pow(2).mean()
             
-            loss = surrogate_loss + PPO_Args.value_loss_coef * value_loss - PPO_Args.entropy_coef * entropy_batch.mean()
+            loss = surrogate_loss + PPO_Args.value_loss_coef * value_loss - PPO_Args.entropy_coef * entropy_batch.mean() # + curiosity_loss
 
             with torch.inference_mode():
                 mean_entropy_loss += PPO_Args.entropy_coef * entropy_batch.mean().item()
@@ -369,6 +388,7 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_reconstruction_loss /= num_updates
+        mean_curiosity_loss /= num_updates
         mean_entropy_loss /= num_updates
         mean_kl /= num_updates
 
@@ -388,7 +408,8 @@ class PPO:
 
         self.iters += 1
         
+        # print('training', mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_curiosity_loss)
 
-        return mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss
+        return mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss, mean_curiosity_loss
 
 

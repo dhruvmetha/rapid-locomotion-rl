@@ -178,7 +178,7 @@ class LeggedRobot(BaseTask):
         self.contact_forces = self.all_contact_forces[self.go1_rb_indices].view(self.num_envs, -1, 3)
 
         
-        self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
+       
 
         self._post_physics_step_callback()
 
@@ -190,6 +190,7 @@ class LeggedRobot(BaseTask):
         # self.reset_idx(env_ids) # HLP: no true resets at low level "functionality"
         
         self.compute_observations()
+        self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
 
         self.last_actions[:] = self.actions[:]
         self.last_dof_pos[:] = self.dof_pos[:]
@@ -265,7 +266,7 @@ class LeggedRobot(BaseTask):
         self._call_train_eval(self._reset_root_states, env_ids)
         self._call_train_eval(self.world_asset.reset_world, env_ids)
         
-        self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
+        # self.world_obs, self.full_seen_world = self.world_asset.get_block_obs()
         # print(self.world_obs.shape)
 
         # reset buffersew
@@ -305,6 +306,9 @@ class LeggedRobot(BaseTask):
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf[:self.num_train_envs]
+
+        
+        self.compute_observations()
 
     def set_idx_pose(self, env_ids, dof_pos, base_state):
         if len(env_ids) == 0:
@@ -534,8 +538,9 @@ class LeggedRobot(BaseTask):
         return props
 
     def _randomize_rigid_body_props(self, env_ids, cfg):
+        # print(cfg.domain_rand.randomize_base_mass)
         if cfg.domain_rand.randomize_base_mass:
-            min_payload, max_payload = cfg.domain_rand.added_mass_range
+            min_payload, max_payload = -0.4, 0.2 # cfg.domain_rand.added_mass_range
             # self.payloads[env_ids] = -1.0
             self.payloads[env_ids] = torch.rand(len(env_ids), dtype=torch.float, device=self.device,
                                                 requires_grad=False) * (max_payload - min_payload) + min_payload
@@ -578,8 +583,10 @@ class LeggedRobot(BaseTask):
 
     def _process_rigid_body_props(self, props, env_id):
         self.default_body_mass = props[0].mass
+        # print('body mass', props[0].mass)
 
         props[0].mass = self.default_body_mass + self.payloads[env_id]
+        # print('body mass', props[0].mass)
         props[0].com = gymapi.Vec3(self.com_displacements[env_id, 0], self.com_displacements[env_id, 1],
                                    self.com_displacements[env_id, 2])
         return props

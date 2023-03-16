@@ -56,17 +56,21 @@ if __name__ == "__main__":
     recent_runs = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/task_pure_rl/*/*/*"), key=os.path.getmtime)
     # print(recent_runs)
     recent_runs = recent_runs[-1:]
+    # recent_runs = ["/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-18/high_level_train/233250.669431"]
+    # recent_runs = ["/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-21/high_level_train/234139.451251"]
+    # recent_runs = ["/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-23/high_level_train/021407.085820"]
+    recent_runs = ["/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-23/high_level_train/222927.684309"]
     print(recent_runs)
     logger.configure(Path(recent_runs[-1]).resolve())
     model, policy = load_env(headless=False)
 
     import torch
     model = model.cpu()
-    example = torch.rand(1, 13).cpu()
+    example = torch.rand(1, 9).cpu()
     actor_model = model.actor_body.cpu()
 
     traced_script_module = torch.jit.trace(actor_model, example)
     if os.path.exists("./cpp_files") == False:
         os.mkdir("./cpp_files")
-    traced_script_module.save("./cpp_files/walking_push_simple_policy_3obs_65_v1.pt")
+    traced_script_module.save("./cpp_files/walking_push_simple_policy_2obs_50_noise_v10.pt")
     print('done')

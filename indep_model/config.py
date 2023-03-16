@@ -1,1 +1,1 @@
-RECTS = 3
+RECTS = 2

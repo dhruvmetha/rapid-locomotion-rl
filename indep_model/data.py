@@ -10,7 +10,7 @@ class CustomDataset(Dataset):
         self.sequence_length = int(sequence_length)
         self.window_size = int(window_size)
         self.input_size = int(input_size)
-        self.labels = labels
+        # self.labels = labels
         self.batch_sequence_segment = np.zeros((len(self.all_folders)), dtype=np.int)
 
     def __len__(self):
@@ -37,7 +37,7 @@ class CustomDataset(Dataset):
             self.batch_sequence_segment[idx] = 0
         else:
             self.batch_sequence_segment[idx] += self.window_size
-        return np.concatenate([inp_idx[:, :13], inp_idx[:, -12:]], axis=-1), targ_idx, mask_idx, fsw_idx, self.batch_sequence_segment[idx] == self.window_size, idx
+        return np.concatenate([inp_idx[:, :12]], axis=-1), targ_idx, mask_idx, fsw_idx, self.batch_sequence_segment[idx] == self.window_size, idx
 
 
 class CustomDatasetRNN(Dataset):

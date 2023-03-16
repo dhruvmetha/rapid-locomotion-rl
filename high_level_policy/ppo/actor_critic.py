@@ -18,8 +18,8 @@ class AC_Args(PrefixProto, cli=False):
     init_noise_std = 1.0
     # actor_hidden_dims = [2048, 2048, 1024, 512, 256, 128]
     # critic_hidden_dims = [2048, 2048, 1024, 512, 256, 128]
-    actor_hidden_dims = [512, 256, 128]
-    critic_hidden_dims = [512, 256, 128]
+    actor_hidden_dims = [1024, 512, 128]
+    critic_hidden_dims = [1024, 512, 128]
     shared_hidden_dims = [128, 13]
     activation = 'tanh'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
 
@@ -33,6 +33,24 @@ class AC_Args(PrefixProto, cli=False):
     env_factor_decoder_branch_latent_dims = [PER_RECT*RECTS if world_cfg.fixed_block.add_to_obs else 9]
     env_factor_decoder_branch_hidden_dims = [[256, 128]]
 
+
+    def __init__(self, input_size, output_size):
+        super().__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, output_size)
+        self.activation = nn.ELU()
+    
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.activation(x)
+        x = self.fc2(x)
+        x = self.activation(x)
+        x = self.fc3(x)
+        return x
 
 class ActorCritic(nn.Module):
     is_recurrent = False
@@ -51,7 +69,6 @@ class ActorCritic(nn.Module):
 
         self.num_privileged_obs = num_privileged_obs
         self.num_obs_history = num_obs_history
-
 
         self.hidden_states = None
         
@@ -305,6 +322,10 @@ class ActorCritic(nn.Module):
     @property
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
+    
+
+    def get_transformer_prediction(self, observation_history):
+        pass
 
     def get_latent_student(self, observation_history, hidden_states=None):
         
@@ -450,17 +471,17 @@ class ActorCritic(nn.Module):
         return self.act_teacher(ob["obs"], ob["privileged_obs"])[1]
 
     def act_inference(self, ob, policy_info={}):
-        if USE_LATENT:
-            if ob["privileged_obs"] is not None:
-                gt_latent = self.env_factor_encoder(ob["privileged_obs"])
-                policy_info["gt_latents"] = gt_latent.detach().cpu().numpy()
+        # if USE_LATENT:
+        #     if ob["privileged_obs"] is not None:
+        #         gt_latent = self.env_factor_encoder(ob["privileged_obs"])
+        #         policy_info["gt_latents"] = gt_latent.detach().cpu().numpy()
         return self.act_student(ob["obs"], ob["obs_history"])
 
     def act_inference_expert(self, ob, policy_info={}):
-        if USE_LATENT:
-            if ob["privileged_obs"] is not None:
-                gt_latent = self.env_factor_encoder(ob["privileged_obs"])
-                policy_info["gt_latents"] = gt_latent.detach().cpu().numpy()
+        # if USE_LATENT:
+        #     if ob["privileged_obs"] is not None:
+        #         gt_latent = self.env_factor_encoder(ob["privileged_obs"])
+        #         policy_info["gt_latents"] = gt_latent.detach().cpu().numpy()
         return self.act_teacher(ob["obs"], ob["privileged_obs"])
 
     def act_student(self, observations, observation_history, adaptation_hs=None, policy_info={}):

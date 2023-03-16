@@ -30,7 +30,7 @@ class HighLevelControlWrapper():
         self.max_episode_length_s = MAX_EPISODE_LENGTH
         self.num_privileged_obs = PER_RECT * RECTS # 13 if world_cfg.fixed_block.add_to_obs else 9
         # self.num_obs = (13 + self.num_privileged_obs) if not USE_LATENT else 13
-        self.num_obs = (13) if not USE_LATENT else 13
+        self.num_obs = (9) if not USE_LATENT else 9
         # self.num_privileged_obs += 24 # + 17
         self.obs_history_length = ROLLOUT_HISTORY
 
@@ -40,6 +40,7 @@ class HighLevelControlWrapper():
 
         self.num_envs = num_envs
         self.num_train_envs = max(1, int(num_envs*train_ratio))
+        print(self.num_envs - self.num_train_envs)
 
     
         self.ll_env, self.low_level_policy = self._load_env(num_envs, headless)
@@ -60,6 +61,14 @@ class HighLevelControlWrapper():
         self.world_ctr = self.ll_env.world_asset.env_world_success
         self.world_success = self.ll_env.world_asset.env_world_counts
         self.world_dist = self.ll_env.world_asset.world_sampling_dist
+        # self.world_dist[0] = 10 
+        # self.world_dist[1] = 15
+        # self.world_dist[2] = 10
+        # self.world_dist[3] = 10
+        # self.world_dist[4] = 15
+        # self.world_dist[5] = 20
+        # self.world_dist[6] = 20
+        self.world_dist /= self.world_dist.sum()
 
         self.dt = self.ll_env.dt
         self.max_episode_length = int(self.max_episode_length_s / self.ll_env.dt)
@@ -178,10 +187,16 @@ class HighLevelControlWrapper():
 
     def distance_control(self):
         return (self.goal_position - self.base_pos)
+    
+
 
     def step(self, actions):
         # print(actions)
-        self.actions[:, :] = torch.clamp(actions, -1.0, 1.0)
+        
+        self.actions[:, :] = torch.clamp(actions, -1., 1)
+        # print(self.actions[0])
+        # self.actions[:, :2] = torch.clamp(actions[:, :2], -0.65, 0.65)
+        # self.actions[:, 2] = torch.clamp(actions[:, 2], -0.4, 0.4)
         # self.actions[:, :] *= 0.65
         # self.actions[:, 0] = 1.
         # self.actions[:, 1] = 0.
@@ -216,12 +231,15 @@ class HighLevelControlWrapper():
 
 
         ## can make this curriculum dynamic based on success rate slopes or learning slopes.
-        # if self.training_ctr > 0:
-        #     self.world_dist[0] = 5 
-        #     self.world_dist[1] = 5
-        #     self.world_dist[2] = 45
-        #     self.world_dist[3] = 45
-        #     self.world_dist /= self.world_dist.sum()
+        if self.training_ctr > 0:
+            # self.world_dist[0] = 10 
+            # self.world_dist[1] = 15
+            # self.world_dist[2] = 10
+            # self.world_dist[3] = 10
+            # self.world_dist[4] = 15
+            # self.world_dist[5] = 20
+            # self.world_dist[6] = 20
+            self.world_dist /= self.world_dist.sum()
 
         # if self.training_ctr > 500:
         #     self.world_dist[0] = 25 
@@ -230,12 +248,12 @@ class HighLevelControlWrapper():
         #     self.world_dist[3] = 25
         #     self.world_dist /= self.world_dist.sum()
 
-        if self.training_ctr > 1200:
-            self.world_dist[0] = 45 
-            self.world_dist[1] = 45
-            self.world_dist[2] = 5
-            self.world_dist[3] = 5
-            self.world_dist /= self.world_dist.sum()
+        # if self.training_ctr > 1200:
+        #     self.world_dist[0] = 45 
+        #     self.world_dist[1] = 45
+        #     self.world_dist[2] = 5
+        #     self.world_dist[3] = 5
+        #     self.world_dist /= self.world_dist.sum()
 
         # if self.training_ctr > 4000:
         #     self.world_dist[0] = 25 
@@ -262,12 +280,15 @@ class HighLevelControlWrapper():
         if self.last_world_obs is not None:
             self.last_world_obs[:, :] = self.world_obs[:, :]
         self.compute_observations()
+
+
+        # if self.reset_envs[0]:
+        #     print('in step', self.obs_buf[0], self.privileged_obs_buf[0], self.full_seen_world[0])
         
         # obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques, self.ll_env.dof_vel, torch.zeros(self.obs_buf.size(0), 20, device=self.device)), dim=-1)
+        obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.dof_vel + (2 * torch.rand_like(self.ll_env.dof_vel) - 1) * 0.05, self.ll_env.torques), dim=-1)
 
-        obs_hist_buf = torch.cat((self.obs_buf, self.ll_env.torques, self.ll_env.dof_vel), dim=-1)
-
-
+        # obs_hist_buf[env_ids, :] = 0.0
         # print(obs_hist_buf.shape)
 
         # print('before', self.obs_history[0, -60:])
@@ -277,7 +298,9 @@ class HighLevelControlWrapper():
         # print('after', self.obs_history[0, -60:])
 
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }, self.rew_buf, self.reset_envs, self.extras
-
+    
+    def reset_obs_history(self, env_ids):
+        self.obs_history[env_ids, :] = 0.0
 
     def post_physics_step(self):
         self.lateral_vel[:] = 0.
@@ -293,10 +316,13 @@ class HighLevelControlWrapper():
         self.trajectory[self.episode_length_buf[self.traj_id]-1, :] = self.base_pos[self.traj_id, :2]
         
         self.base_quat = self.ll_env.root_states[:, 3:7]
+        obs_yaw = torch.atan2(2.0*(self.base_quat[:, 0]*self.base_quat[:, 1] + self.base_quat[:, 3]*self.base_quat[:, 2]), 1. - 2.*(self.base_quat[:, 1]*self.base_quat[:, 1] + self.base_quat[:, 2]*self.base_quat[:, 2]))
+
         self.base_lin_vel = self.ll_env.base_lin_vel.clone()
         
         self.base_ang_vel = self.ll_env.base_ang_vel.clone()
 
+        # print('yaw', obs_yaw[0], self.base_ang_vel[0, 2], self.actions[0, 2])
         # print("actions", self.actions[0, :], "base_lin_vel", self.base_lin_vel[0, :2], "base_ang_vel", self.base_ang_vel[0, 2])
 
         self.world_obs = self.ll_env.world_obs
@@ -312,16 +338,29 @@ class HighLevelControlWrapper():
         # self.obs_buf = torch.cat([self.base_pos,  self.base_quat, self.base_lin_vel, self.base_ang_vel, self.actions, self.world_obs], dim=-1)
 
         # print(self.ll_env.torques.shape)
-        if USE_LATENT:
-            self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.last_actions], dim=-1)
-        else:
-            # self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.last_actions, self.world_obs], dim=-1)
-            self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.last_actions], dim=-1)
 
-        
+       
+        if USE_LATENT:
+            self.obs_buf = torch.cat([self.base_pos[:, :2], obs_yaw.view(-1, 1), self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.last_actions], dim=-1)
+            # self.obs_buf = torch.cat([self.base_pos, self.base_quat, self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.last_actions], dim=-1)
+        else:
+            self.obs_buf = torch.cat([self.base_pos[:, :2], obs_yaw.view(-1, 1), self.base_lin_vel[:, :2], self.base_ang_vel[:, 2:], self.last_actions], dim=-1)
+
+        noise = False
+        if noise:
+            self.noise_scale_vec = torch.ones_like(self.obs_buf) * 0.05
+            # # print(self.noise_scale_vec.shape)
+            self.noise_scale_vec[:, 0] = 0.06
+            self.noise_scale_vec[:, 1] = 0.06
+            self.noise_scale_vec[:, 2] = 0.06
+            self.noise_scale_vec[:, 3] = 0.05
+            self.noise_scale_vec[:, 4] = 0.05
+            # self.noise_scale_vec[:, 5] = 0.05
+            self.noise_scale_vec[:, 6:] = 0.001
+            # self.noise_scale_vec[:, 10:] = 0.001
+            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
         self.privileged_obs_buf = torch.cat([self.world_obs], dim=-1)
-
         # rand_num = np.random.choice(torch.arange(0, self.num_envs, 1))
         self.last_pos[:] = self.base_pos[:]
         
@@ -350,7 +389,7 @@ class HighLevelControlWrapper():
         # base_pos = self.ll_env.root_states[:, :3] - self.ll_env.env_origins[:, :3] - self.ll_env.base_init_state[:3]
         self.gs_buf = (self.base_pos[:, 0] - self.goal_position[:, 0]) > GOAL_THRESHOLD # reach a point goal
 
-        # self.pos_reset_buf[:] = torch.abs(self.base_pos[:, 1]) > 0.7 # reach a point goal
+        # self.pos_reset_buf[:] = torch.abs(self.base_pos[:, 1]) > 0.9 # reach a point goal
         # if self.pos_reset_buf[1].item():
         #     print('resetting',  torch.abs(self.base_pos[:, 1])[1], self.base_pos[1, :2])
         # self.pos_reset_buf[:] |= self.base_pos[:, 0] < -0.3 # reach a point goal
@@ -453,9 +492,9 @@ class HighLevelControlWrapper():
                 except:
                     self.extras['eval/episode']['time_taken'] = 0
 
-        if (self.extras['train']['env_count'] + self.extras['eval']['env_count']) > 10000:
-            print("########################## resetting counters ##########################")
+        if (self.extras['train']['env_count']) > 5000:
             self.extras['train'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
+        if self.extras['eval']['env_count'] >  2000:
             self.extras['eval'] = { 'success': 0, 'failure': 0, 'ep_length': 0, 'env_count': 0}
 
         self.ll_env.reset_idx(env_ids)
@@ -474,7 +513,12 @@ class HighLevelControlWrapper():
         self.reset_buf[env_ids] = False
         self.pos_reset_buf[env_ids] = False
 
-        self.obs_history[env_ids, :] = 0
+        # self.obs_history[env_ids, :] = 0.0
+
+        # self.obs_buf[env_ids, :] = 0.
+        # self.obs_history[env_ids, :] = 0.
+
+        # print('in reset idx', self.obs_buf[0], self.obs_history[0])
 
         return { 'obs': self.obs_buf, 'privileged_obs': self.privileged_obs_buf, 'obs_history': self.obs_history }
 
@@ -542,20 +586,22 @@ class HighLevelControlWrapper():
             Cfg.domain_rand._update(deps)
             Cfg.control._update(deps)
 
-        # turn off DR for evaluation script
-        Cfg.domain_rand.push_robots = False
-        Cfg.domain_rand.randomize_friction = False
-        Cfg.domain_rand.randomize_gravity = False
-        Cfg.domain_rand.randomize_restitution = False
-        Cfg.domain_rand.randomize_motor_offset = False
-        Cfg.domain_rand.randomize_motor_strength = False
-        Cfg.domain_rand.randomize_friction_indep = False
-        Cfg.domain_rand.randomize_ground_friction = False
-        Cfg.domain_rand.randomize_base_mass = False
-        Cfg.domain_rand.randomize_Kd_factor = False
-        Cfg.domain_rand.randomize_Kp_factor = False
-        Cfg.domain_rand.randomize_joint_friction = False
-        Cfg.domain_rand.randomize_com_displacement = False
+        noise = False
+        if not noise:
+            # turn off DR for evaluation script
+            Cfg.domain_rand.push_robots = False
+            Cfg.domain_rand.randomize_friction = False
+            Cfg.domain_rand.randomize_gravity = False
+            Cfg.domain_rand.randomize_restitution = False
+            Cfg.domain_rand.randomize_motor_offset = False
+            Cfg.domain_rand.randomize_motor_strength = False
+            Cfg.domain_rand.randomize_friction_indep = False
+            Cfg.domain_rand.randomize_ground_friction = False
+            Cfg.domain_rand.randomize_base_mass = False
+            Cfg.domain_rand.randomize_Kd_factor = False
+            Cfg.domain_rand.randomize_Kp_factor = False
+            Cfg.domain_rand.randomize_joint_friction = False
+            Cfg.domain_rand.randomize_com_displacement = False
 
         Cfg.env.num_recording_envs = 1
         Cfg.env.num_envs = self.num_envs
@@ -599,8 +645,9 @@ class HighLevelControlWrapper():
         return self.episode_length_buf/self.max_episode_length
 
     def _reward_distance(self):
-        print(self.base_pos[1, :2], self.actions[1], self.base_lin_vel[1, :2], self.base_ang_vel[1, 2:3])
-        # return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1))) # reach a point 
+        if torch.abs(self.base_pos[1, 1]) > 0.95:
+            print(self.base_pos[1, :2], self.actions[1], self.base_lin_vel[1, :2], self.base_ang_vel[1, 2:3])
+            # return 1.0 - (1/torch.exp(torch.linalg.norm(self.last_pos[:, :2] - self.goal_position, dim=-1))) # reach a point 
         return 1.0 - (1/torch.exp((self.goal_position[:, 0] - self.last_pos[:, 0] + GOAL_THRESHOLD))) # reach a point goal
         # d = torch.abs(self.last_pos[:, 0] - (self.goal_position[:, 0]))
         # r = (d/self.goal_position[:, 0])**0.4 # break out of region goal
@@ -671,11 +718,11 @@ class HighLevelControlWrapper():
         return (torch.sum((torch.abs(self.actions) > 1.0), dim=-1) > 0.) * 1.0
 
     def _reward_zero_velocity(self):
-        return ((torch.linalg.norm(self.base_lin_vel, dim=-1) + torch.linalg.norm(self.base_ang_vel, dim=-1)) < 0.2) * 1.0
+        return ((torch.abs(self.base_lin_vel[:, 0]) < 0.2) | (torch.abs(self.base_lin_vel[:, 1]) < 0.2)) * 1.0
     
     def _reward_side_limits(self):
         # print(self.base_pos[1, :2], self.world_obs[1, :4], self.full_seen_world[1, :4])
-        return ((torch.abs(self.base_pos[:, 1]) > 0.7)) * 1.0
+        return ((torch.abs(self.base_pos[:, 1]) > 0.925)) * 1.0
 
     def _reward_back_limits(self):
         return (self.base_pos[:, 0] < -0.3) * 1.0
@@ -684,8 +731,8 @@ class HighLevelControlWrapper():
         return 1 - 1/(torch.exp((torch.sum(torch.square(self.actions) > 0.25, dim=-1) > 1) * torch.sum(torch.square(self.actions), dim=-1)))
     
     def _reward_base_lin_vel(self):
-        return torch.sum((torch.abs(self.base_lin_vel[:, :2]) > 0.65), dim=-1) >= 0 + (torch.abs(self.base_ang_vel[:, 2]) > 0.65).int()
-
+        return (torch.sum((torch.abs(self.base_lin_vel[:, :2]) > 0.65), dim=-1) >= 0) * 1.0
+    
     def _reward_base_ang_vel(self):
         return (torch.abs(self.base_ang_vel[:, 2]) > 0.65) * 1.0
 
@@ -699,8 +746,8 @@ class HighLevelControlWrapper():
         if self.last_world_obs is None:
             return torch.zeros(self.num_envs)
         
-        diff = torch.linalg.norm(self.world_obs[:, 2:4] - self.last_world_obs[:, 2:4], dim=-1)
-        print(self.base_pos[1, :2], self.world_obs[1, :4], self.last_world_obs[1, :4], diff[1], diff[1] < 0.01)
+        diff = torch.linalg.norm(self.world_obs[:, 2:5] - self.last_world_obs[:, 2:5], dim=-1)
+        # print(self.base_pos[1, :2], self.world_obs[1, :4], self.last_world_obs[1, :4], diff[1], diff[1] < 0.01)
         diff = diff < 0.01
         diff *= torch.sum(self.last_world_obs, dim=-1) > 0.0
         # print(diff[0])

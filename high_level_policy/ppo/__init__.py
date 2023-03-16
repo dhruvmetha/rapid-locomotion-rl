@@ -12,6 +12,7 @@ import wandb
 import numpy as np
 
 from .actor_critic import ActorCritic
+# from .actor_critic_recurrent import ActorCriticRecurrent
 from .rollout_storage import RolloutStorage
 
 from high_level_policy import *
@@ -70,9 +71,13 @@ class RunnerArgs(PrefixProto, cli=False):
     start_save_plot = 0
     save_plot_interval = 125
     # load and resume
-    resume = True
+    resume = RESUME_CHECKPOINT
     load_run = -1  # -1 = last run
-    checkpoint = '/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_full_info_decoder/2023-02-14/high_level_train/183329.086403/checkpoints/ac_weights_last.pt'  # -1 = last saved model
+    # checkpoint = '/common/home/dm1487/robotics_research/legged_manipulation/experimental_bed_2/high_level_policy/runs/task_full_info_decoder/2023-02-14/high_level_train/183329.086403/checkpoints/ac_weights_last.pt'  # -1 = last saved model
+    # checkpoint = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-18/high_level_train/233250.669431/checkpoints/ac_weights_last.pt"
+    # checkpoint = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-21/high_level_train/103519.121655/checkpoints/ac_weights_last.pt"
+    checkpoint = "/common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-23/high_level_train/021407.085820/checkpoints/ac_weights_last.pt"
+    # /common/home/dm1487/robotics_research/legged_manipulation/experiments_real_robot/high_level_policy/runs/task_pure_rl/2023-02-23/high_level_train/021407.085820
     resume_path = None  # updated from load_run and chkpt
 
 
@@ -89,6 +94,18 @@ class Runner:
                                       self.env.num_obs_history,
                                       self.env.num_actions,
                                       ).to(self.device)
+        
+        # actor_critic = ActorCriticRecurrent(self.env.num_obs,
+        #                               self.env.num_privileged_obs,
+        #                               self.env.num_obs_history,
+        #                               self.env.num_actions,
+        #                               ).to(self.device)
+
+        
+
+        # forward_model = ForwardModel((self.env.num_obs-3) + (self.env.num_privileged_obs-6) + self.env.num_actions, (self.env.num_obs-3) + (self.env.num_privileged_obs-6))
+
+        # inverse_model = InverseModel((self.env.num_obs-3) + (self.env.num_privileged_obs-6) + self.env.num_actions, (self.env.num_obs-3) + (self.env.num_privileged_obs-6))
 
         if RunnerArgs.resume:
             print('loading model for init...')
@@ -102,7 +119,7 @@ class Runner:
             print('successfully loaded model...')
 
 
-        self.alg = PPO(actor_critic, device=self.device)
+        self.alg = PPO(actor_critic, forward_model=None, device=self.device)
         self.num_steps_per_env = RunnerArgs.num_steps_per_env
 
 
@@ -175,8 +192,10 @@ class Runner:
         save_at_iter = RunnerArgs.start_save_plot
         save_at_iter_eval = RunnerArgs.start_save_plot
         for it in tqdm(range(self.current_learning_iteration, tot_iter)):
-            self.env.ll_env.world_asset.variables['full_info'] = False # it < 100
-            start = time.time()
+            # print('full info prob: ', self.env.ll_env.world_asset.full_info_prob, self.env.ll_env.world_asset.full_info_bool.sum()/self.env.ll_env.world_asset.full_info_bool.shape[0])
+            # self.env.ll_env.world_asset.variables['full_info'] = False # it < 100
+            # if (it + 1)%5 == 0:
+            #     self.env.ll_env.world_asset.decay_full_info_prob()
             # Rollout
             # if self.current_learning_iteration+it % 5 == 0:
                 # eval_expert = True
@@ -283,6 +302,8 @@ class Runner:
                         # print('patch_creation', time.time() - start)
 
                     ######
+                    # 6 + 5 + 5 + 5 + 3 = 24
+                    fm_obs = torch.cat([obs[:num_train_envs, :-3], privileged_obs[:num_train_envs, int(PER_RECT*0 + 2):int(PER_RECT*0 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*1 + 2):int(PER_RECT*1 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*2 + 2):int(PER_RECT*2 + PER_RECT)], actions_train], dim=-1)
                                             
                     ret = self.env.step(torch.cat((actions_train, actions_eval), dim=0))
 
@@ -296,12 +317,32 @@ class Runner:
                             save_video_anim_eval = True
                             self.eval_dones_ctr = 0
 
+
+
+                    
+
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
+                    
+
 
                     obs, privileged_obs, obs_history, rewards, dones = obs.to(self.device), privileged_obs.to(
                         self.device), obs_history.to(self.device), rewards.to(self.device), dones.to(self.device)
+                    
+                    
                     # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
+
+
+                    
+                
+                    # fm_obs_pred = self.alg.fm(fm_obs)
+                    # fm_obs_next = torch.cat([obs[:num_train_envs, :-3], privileged_obs[:num_train_envs, int(PER_RECT*0 + 2):int(PER_RECT*0 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*1 + 2):int(PER_RECT*1 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*2 + 2):int(PER_RECT*2 + PER_RECT)]], dim=-1)
+
+                    # curiosity_reward_scale = 0.1
+                    # curiosity_reward = torch.linalg.norm(fm_obs_pred[:, 6:] - fm_obs_next[:, 6:]) * curiosity_reward_scale
+                    # # print('inference', curiosity_reward)
+                    # rewards[:num_train_envs] += curiosity_reward
+                    # infos['train/episode']['rew_curiosity'] = curiosity_reward * curiosity_reward_scale
 
                     
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
@@ -384,7 +425,7 @@ class Runner:
                                     path=f"curriculum/info.pkl", append=True)
 
             
-            mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss = self.alg.update(student=((it > complete_student)))
+            mean_value_loss, mean_surrogate_loss, mean_entropy_loss, mean_kl, mean_adaptation_module_loss, mean_reconstruction_loss, mean_adaptation_reconstruction_loss, mean_curiosity_loss = self.alg.update(student=((it > complete_student)))
 
             # mean_eval_adaptation_module_loss = 0
             # mean_eval_teacher_reconstruction_loss = 0
@@ -412,6 +453,7 @@ class Runner:
                 mean_entropy_loss=mean_entropy_loss,
                 mean_kl=mean_kl,
                 mean_adaptation_reconstruction_loss=mean_adaptation_reconstruction_loss,
+                mean_curiosity_loss = mean_curiosity_loss,
                 # mean_eval_teacher_reconstruction_loss = mean_eval_teacher_reconstruction_loss,
                 # mean_eval_adaptation_module_loss = mean_eval_adaptation_module_loss,
                 # mean_eval_adaptation_reconstruction_loss = mean_eval_adaptation_reconstruction_loss,

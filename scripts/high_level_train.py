@@ -15,10 +15,8 @@ if __name__ == '__main__':
     from high_level_policy.ppo import Runner
 
 
-    parser = argparse.ArgumentParser() 
+    parser = argparse.ArgumentParser()
      
-
-
     # add a positional argument for the number of environments
     # the type of this argument will be an integer
     # the default value will be 2500

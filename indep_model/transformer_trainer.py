@@ -31,13 +31,13 @@ train_batch_size = 128
 test_batch_size = 128
 learning_rate = 1e-4
 dropout = 0.
-input_size = 25
+input_size = 12
 output_size = 21
 # RECTS = 2
 
 wandb.init(project='indep_model', name=f'{alg}_{sequence_length}_{hidden_state_size}_3obs/')
 
-SAVE_FOLDER = Path(f'./indep_model/results/{alg}_{sequence_length}_{hidden_state_size}_3obs/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+SAVE_FOLDER = Path(f'./indep_model/results/{alg}_{sequence_length}_{hidden_state_size}_2obs/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
 PLOT_FOLDER = 'plots'
 CHECKPOINT_FOLDER = 'checkpoints'
@@ -52,34 +52,40 @@ CHECKPOINT_FOLDER = 'checkpoints'
 ####
 
 #### 3 obstacle
-traj_data_file = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/traj_list_train_bb_traj'
-ingore_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/ignore_random_traj_bb.pkl'
-label_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/labels_random_traj_bb.pkl'
+# traj_data_file = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/traj_list_train_bb_traj'
+# ingore_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/ignore_random_traj_bb.pkl'
+# label_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/labels_random_traj_bb.pkl'
 #####
 
-with open(ingore_data_files, 'rb') as f:
-    ignore_files_loaded = pickle.load(f)
-with open(label_data_files, 'rb') as f:
-    label_idx = pickle.load(f)
+traj_data_file = '/common/users/dm1487/legged_manipulation_data/rollout_data/2_obstacle/sim2real/trajectory_list'
+# ingore_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/ignore_random_traj_bb.pkl'
+# label_data_files = '/common/users/dm1487/legged_manipulation_data/rollout_data/3_obstacle/labels_random_traj_bb.pkl'
 
-#     pickle.dump(label_idx, f)
+##### something that works #####
+# with open(ingore_data_files, 'rb') as f:
+#     ignore_files_loaded = pickle.load(f)
+# with open(label_data_files, 'rb') as f:
+#     label_idx = pickle.load(f)
 
-idxs_ignored = [int(i.stem.split('_')[-1]) for i in ignore_files_loaded]
+# #     pickle.dump(label_idx, f)
 
-idxs_valid = {1: [], 2:[], 3:[]}
-train_labels = []
-val_labels = []
-for k, v in label_idx.items():
-    idxs_valid[k] = [int(i.stem.split('_')[-1]) for i in list(set(v) - set(ignore_files_loaded))]
-limit_class = min(len(idxs_valid[1][:-2000]), len(idxs_valid[2][:-2000]), len(idxs_valid[3][:-2000]))
-train_idxs_valid_all = []
-for k, v in idxs_valid.items():
-    train_labels.extend((np.zeros(limit_class) + k).astype(int).tolist())
-    train_idxs_valid_all.extend(np.random.choice(v[:-2000], limit_class))
-val_idxs_valid_all = []
-for k, v in idxs_valid.items():
-    val_labels.extend((np.zeros(2000) + k).astype(int).tolist())
-    val_idxs_valid_all.extend(np.random.choice(v[-2000:], 2000))
+# idxs_ignored = [int(i.stem.split('_')[-1]) for i in ignore_files_loaded]
+
+# idxs_valid = {1: [], 2:[], 3:[]}
+# train_labels = []
+# val_labels = []
+# for k, v in label_idx.items():
+#     idxs_valid[k] = [int(i.stem.split('_')[-1]) for i in list(set(v) - set(ignore_files_loaded))]
+# limit_class = min(len(idxs_valid[1][:-2000]), len(idxs_valid[2][:-2000]), len(idxs_valid[3][:-2000]))
+# train_idxs_valid_all = []
+# for k, v in idxs_valid.items():
+#     train_labels.extend((np.zeros(limit_class) + k).astype(int).tolist())
+#     train_idxs_valid_all.extend(np.random.choice(v[:-2000], limit_class))
+# val_idxs_valid_all = []
+# for k, v in idxs_valid.items():
+#     val_labels.extend((np.zeros(2000) + k).astype(int).tolist())
+#     val_idxs_valid_all.extend(np.random.choice(v[-2000:], 2000))
+##### something that works #####
 
 # idxs_ignored =[]
 # train_idxs = np.concatenate((np.random.randint(0, 60000, 40000), np.random.randint(60000, 120000, 40000), np.random.randint(120000, 180000, 40000)), axis=-1).astype(int).tolist()
@@ -102,15 +108,21 @@ all_train_test_files = sorted(glob(f'{traj_data_file}/*.npz'), key=lambda x: int
 # val_idxs = np.random.randint(1000, 1300, 300).astype(int).tolist()
 # print(len(train_idxs))
 # val_idxs = train_idxs # [int(i) for i in np.random.randint(0, len(val_idxs), 1000).astype(int).tolist()]
+num_train_envs = int(len(all_train_test_files) * 0.90)
+train_idxs_valid_all = np.arange(0, num_train_envs).astype(int).tolist()
+val_idxs_valid_all = np.arange(num_train_envs, len(all_train_test_files)).astype(int).tolist()
+
+# train_idxs_valid_all = np.arange(0, 1000).astype(int).tolist()
+# val_idxs_valid_all = np.arange(0, 1000).astype(int).tolist()
 
 training_files = [all_train_test_files[i] for i in train_idxs_valid_all]
 # val_files = sorted(glob(f'{traj_data_file}/*.npz'), key=lambda x: int(x.split('.npz')[0].split('/')[-1]))
 val_files = [all_train_test_files[i] for i in val_idxs_valid_all]
 
-train_ds = CustomDataset(files=training_files, labels = train_labels, input_size=input_size, sequence_length=sequence_length, window_size=window_size)
+train_ds = CustomDataset(files=training_files, labels = [], input_size=input_size, sequence_length=sequence_length, window_size=window_size)
 train_dl = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)
 
-val_ds = CustomDataset(files=val_files, labels = val_labels, input_size=input_size, sequence_length=sequence_length, window_size=window_size)
+val_ds = CustomDataset(files=val_files, labels = [], input_size=input_size, sequence_length=sequence_length, window_size=window_size)
 val_dl = DataLoader(val_ds, batch_size=train_batch_size, shuffle=True)
 
 print(len(train_ds), len(val_ds))
@@ -124,7 +136,7 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0
 # scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_dl), epochs=epochs)
 
 def loss_fn(out, targ, mask):
-    per_rect = 7
+    per_rect = 8
     extract_idx = [torch.arange(per_rect*0, per_rect*1, dtype=torch.long, device=device), torch.arange(per_rect*1, per_rect*2, dtype=torch.long, device=device), torch.arange(per_rect*2, per_rect*3, dtype=torch.long, device=device), torch.arange(per_rect*3, per_rect*4, dtype=torch.long, device=device)]
     reconstruction_loss = None
 

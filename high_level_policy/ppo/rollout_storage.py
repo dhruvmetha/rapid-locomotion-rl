@@ -69,6 +69,8 @@ class RolloutStorage:
             self.action_sigma = None
             self.env_bins = None
             self.adaptation_hidden_states = None
+            self.actor_hidden_states = None
+            self.critic_hidden_states = None
             self.latent_teacher_states = None
             self.full_seen_world = None
 
@@ -86,6 +88,8 @@ class RolloutStorage:
         self.actions_shape = actions_shape
         self.adaptation_hidden_sizes = adaptation_hidden_sizes
         self.latent_size = latent_size
+        self.actor_hidden_size = [256]
+        self.critic_hidden_size = [256]
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
@@ -93,6 +97,10 @@ class RolloutStorage:
         self.full_seen_world = torch.zeros(num_transitions_per_env, num_envs, *privileged_obs_shape, device=self.device)
         self.observation_histories = torch.zeros(num_transitions_per_env, num_envs, *obs_history_shape, device=self.device)
         self.adaptation_hidden_states = torch.zeros(num_transitions_per_env, num_envs, *self.adaptation_hidden_sizes, device=self.device)
+        
+        self.actor_hidden_states = torch.zeros(1, num_envs, *self.actor_hidden_size, device=self.device)
+        self.critic_hidden_states = torch.zeros(1, num_envs, *self.critic_hidden_size, device=self.device)
+
         self.latent_teacher_states = torch.zeros(num_transitions_per_env, num_envs, *self.latent_size, device=self.device)
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.actions = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
@@ -239,14 +247,18 @@ class RolloutStorage:
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, None, None # env_bins_batch
 
     # for RNNs only
-    def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
+    def recurrent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
 
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
         padded_privileged_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.privileged_observations, self.dones)
         padded_obs_history_trajectories, trajectory_masks = split_and_pad_trajectories(self.observation_histories, self.dones)
         padded_critic_obs_trajectories = padded_obs_trajectories
 
+        # print(padded_obs_trajectories.shape, padded_privileged_obs_trajectories.shape, padded_obs_history_trajectories.shape, padded_critic_obs_trajectories.shape)
+
         mini_batch_size = self.num_envs // num_mini_batches
+
+        # print(mini_batch_size)
         for ep in range(num_epochs):
             first_traj = 0
             for i in range(num_mini_batches):
@@ -275,6 +287,6 @@ class RolloutStorage:
                 old_actions_log_prob_batch = self.actions_log_prob[:, start:stop]
 
                 yield obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, masks_batch
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, masks_batch, None, None
                 
                 first_traj = last_traj
