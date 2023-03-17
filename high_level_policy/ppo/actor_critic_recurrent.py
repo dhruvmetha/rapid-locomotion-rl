@@ -45,9 +45,9 @@ class ActorCriticRecurrent(nn.Module):
         activation = get_activation(RAC_Args.activation)
 
         total_latent_dim = 0
+        hidden_size = 64
         if USE_LATENT:
             total_latent_dim = num_privileged_obs
-            hidden_size = 256
         # Policy
         self.memory_a = Memory(num_obs+total_latent_dim, type='gru', num_layers=1, hidden_size=hidden_size)
         self.memory_c = Memory(num_obs+total_latent_dim, type='gru', num_layers=1, hidden_size=hidden_size)
@@ -105,23 +105,26 @@ class ActorCriticRecurrent(nn.Module):
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
    
-    def update_distribution(self, observations, privileged_observations, student=False, observation_history=None, hidden_states=None):
-
+    def update_distribution(self, observations, privileged_observations, masks=None, student=False, observation_history=None, hidden_states=None):
         priv_obs_pred_student, priv_obs_pred_teacher = None, privileged_observations
         latent_teacher, latent_student = privileged_observations, None
 
         if USE_LATENT:
-            state = self.memory_a(torch.cat((observations, privileged_observations), dim=-1), hidden_states)
+            state = self.memory_a(torch.cat((observations, privileged_observations), dim=-1), masks=masks, hidden_states=hidden_states)
         else:
-            state = self.memory_a(observations, hidden_states)
+            state = self.memory_a(observations, masks=masks, hidden_states=hidden_states)
 
-        mean = self.actor_body(state)
+        mean = self.actor_body(state.squeeze(0))
+        # print('mean', observations.shape, privileged_observations.shape, mean.shape, state.shape)
         self.distribution = Normal(mean, mean * 0. + self.std)
+
+        latent_teacher = state
 
         return (priv_obs_pred_teacher, priv_obs_pred_student), (latent_teacher, latent_student)
     
     def act(self, observations, privileged_observations, **kwargs):
-        priv_obs_pred, latent = self.update_distribution(observations, privileged_observations, student=kwargs['student'], observation_history=kwargs['observation_history'], hidden_states=kwargs['hidden_states'])
+        # print('in act', observations.shape, privileged_observations.shape)
+        priv_obs_pred, latent = self.update_distribution(observations, privileged_observations, student=kwargs['student'], observation_history=kwargs['observation_history'], hidden_states=kwargs['hidden_states'], masks= kwargs['masks'] if 'masks' in kwargs else None)
         return (priv_obs_pred, latent), self.distribution.sample()
 
     def get_actions_log_prob(self, actions):
@@ -162,27 +165,30 @@ class ActorCriticRecurrent(nn.Module):
             # actions_mean = self.actor_body(observations)
         return (priv_obs_pred, latent), actions_mean
 
-    def act_teacher(self, observations, privileged_info, hidden_states, policy_info={}):
+    def act_teacher(self, observations, privileged_info, masks=None, hidden_states=None, policy_info={}):
         priv_obs_pred = privileged_info
         latent = privileged_info
         if USE_LATENT:
-            state, next_hidden_states = self.memory_a(torch.cat((observations, privileged_info), dim=-1), hidden_states)
+            state = self.memory_a(torch.cat((observations, privileged_info), dim=-1), masks=masks, hidden_states=hidden_states)
         else:
-            state, next_hidden_states = self.memory_a(observations, hidden_states)
+            state = self.memory_a(observations, masks=masks, hidden_states=hidden_states)
 
-        actions_mean = self.actor_body(state)
-        return (priv_obs_pred, latent, next_hidden_states), actions_mean
+        actions_mean = self.actor_body(state.squeeze(0))
+        return (priv_obs_pred, latent), actions_mean
 
 
     def evaluate(self, critic_observations, privileged_observations, **kwargs):
         hidden_states = kwargs["hidden_states"]
+        masks = kwargs["masks"] if "masks" in kwargs else None
+        # print('here', hidden_states.shape)
         if USE_LATENT:
-            state, next_hidden_states = self.memory_c(torch.cat((critic_observations, privileged_observations), dim=-1), hidden_states)
+            state = self.memory_c(torch.cat((critic_observations, privileged_observations), dim=-1), masks=masks, hidden_states=hidden_states)
         else:
-            state, next_hidden_states = self.memory_c(critic_observations, hidden_states)
+            state = self.memory_c(critic_observations, masks=masks, hidden_states=hidden_states)
         
-        value = self.critic_body(state)
-        return value, next_hidden_states
+        # print('here', state.shape)
+        value = self.critic_body(state.squeeze(0))
+        return value, state
 
 class Memory(torch.nn.Module):
     def __init__(self, input_size, type='lstm', num_layers=1, hidden_size=256):
@@ -193,17 +199,20 @@ class Memory(torch.nn.Module):
         self.hidden_states = None
     
     def forward(self, input, masks=None, hidden_states=None):
-        batch_mode = masks is not None
+        batch_mode = hidden_states is not None
         if batch_mode:
             # batch mode (policy update): need saved hidden states
-            if hidden_states is None:
-                raise ValueError("Hidden states not passed to memory module during policy update")
-            out, final_hidden_states = self.rnn(input, hidden_states)
-            out = unpad_trajectories(out, masks)
+            # if hidden_states is None:
+            #     raise ValueError("Hidden states not passed to memory module during policy update")
+            out, _ = self.rnn(input, hidden_states)
+            # print('before masks', out.shape)
+            if masks is not None:
+                out = unpad_trajectories(out, masks)
+            # print('after before masks', out.shape)
         else:
             # inference mode (collection): use hidden states of last step
             out, self.hidden_states = self.rnn(input.unsqueeze(0), self.hidden_states)
-        return out, final_hidden_states if batch_mode else self.hidden_states
+        return out
 
     def reset(self, dones=None):
         # When the RNN is an LSTM, self.hidden_states_a is a list with hidden_state and cell_state

@@ -88,8 +88,8 @@ class RolloutStorage:
         self.actions_shape = actions_shape
         self.adaptation_hidden_sizes = adaptation_hidden_sizes
         self.latent_size = latent_size
-        self.actor_hidden_size = [256]
-        self.critic_hidden_size = [256]
+        self.actor_hidden_size = [64]
+        self.critic_hidden_size = [64]
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
@@ -98,8 +98,8 @@ class RolloutStorage:
         self.observation_histories = torch.zeros(num_transitions_per_env, num_envs, *obs_history_shape, device=self.device)
         self.adaptation_hidden_states = torch.zeros(num_transitions_per_env, num_envs, *self.adaptation_hidden_sizes, device=self.device)
         
-        self.actor_hidden_states = torch.zeros(1, num_envs, *self.actor_hidden_size, device=self.device)
-        self.critic_hidden_states = torch.zeros(1, num_envs, *self.critic_hidden_size, device=self.device)
+        self.actor_hidden_states = torch.zeros(num_transitions_per_env, num_envs, *self.actor_hidden_size, device=self.device)
+        self.critic_hidden_states = torch.zeros(num_transitions_per_env, num_envs, *self.critic_hidden_size, device=self.device)
 
         self.latent_teacher_states = torch.zeros(num_transitions_per_env, num_envs, *self.latent_size, device=self.device)
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
@@ -134,8 +134,13 @@ class RolloutStorage:
         self.privileged_observations[self.step].copy_(transition.privileged_observations)
         self.full_seen_world[self.step].copy_(transition.full_seen_world)
         self.observation_histories[self.step].copy_(transition.observation_histories)
-        self.adaptation_hidden_states[self.step].copy_(transition.adaptation_hidden_states)
-        self.latent_teacher_states[self.step].copy_(transition.latent_teacher_states)
+        # self.adaptation_hidden_states[self.step].copy_(transition.adaptation_hidden_states)
+
+        
+        self.actor_hidden_states[self.step].copy_(transition.actor_hidden_states)
+        self.critic_hidden_states[self.step].copy_(transition.critic_hidden_states)
+        
+        # self.latent_teacher_states[self.step].copy_(transition.latent_teacher_states)
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
@@ -252,7 +257,21 @@ class RolloutStorage:
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
         padded_privileged_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.privileged_observations, self.dones)
         padded_obs_history_trajectories, trajectory_masks = split_and_pad_trajectories(self.observation_histories, self.dones)
+        padded_actor_hidden_states, trajectory_masks = split_and_pad_trajectories(self.actor_hidden_states, self.dones)
+        padded_critic_hidden_states, trajectory_masks = split_and_pad_trajectories(self.critic_hidden_states, self.dones)
         padded_critic_obs_trajectories = padded_obs_trajectories
+
+        # padded_actions_trajectories, trajectory_masks = split_and_pad_trajectories(self.actions, self.dones)
+        # padded_values_trajectories, trajectory_masks = split_and_pad_trajectories(self.values, self.dones)
+        # padded_returns_trajectories, trajectory_masks = split_and_pad_trajectories(self.returns, self.dones)
+        # padded_old_actions_log_prob_trajectories, trajectory_masks = split_and_pad_trajectories(self.actions_log_prob, self.dones)
+        # padded_advantages_trajectories, trajectory_masks = split_and_pad_trajectories(self.advantages, self.dones)
+        # padded_old_mu_trajectories, trajectory_masks = split_and_pad_trajectories(self.mu, self.dones)
+        # padded_old_sigma_trajectories, trajectory_masks = split_and_pad_trajectories(self.sigma, self.dones)
+        # padded_old_env_bins_trajectories, trajectory_masks = split_and_pad_trajectories(self.env_bins, self.dones)
+
+
+        # print('shapes', padded_obs_trajectories.shape, padded_actor_hidden_states.shape, padded_critic_hidden_states.shape)
 
         # print(padded_obs_trajectories.shape, padded_privileged_obs_trajectories.shape, padded_obs_history_trajectories.shape, padded_critic_obs_trajectories.shape)
 
@@ -270,6 +289,7 @@ class RolloutStorage:
                 last_was_done[1:] = dones[:-1]
                 last_was_done[0] = True
                 trajectories_batch_size = torch.sum(last_was_done[:, start:stop])
+                # print(trajectories_batch_size)
                 last_traj = first_traj + trajectories_batch_size
                 
                 masks_batch = trajectory_masks[:, first_traj:last_traj]
@@ -277,6 +297,23 @@ class RolloutStorage:
                 critic_obs_batch = padded_critic_obs_trajectories[:, first_traj:last_traj]
                 privileged_obs_batch = padded_privileged_obs_trajectories[:, first_traj:last_traj]
                 obs_history_batch = padded_obs_history_trajectories[:, first_traj:last_traj]
+
+                
+                actor_hidden_states_batch = padded_actor_hidden_states[:, first_traj:last_traj]
+                critic_hidden_states_batch = padded_critic_hidden_states[:, first_traj:last_traj]
+
+                # print('shapes after batching', obs_batch.shape, actor_hidden_states_batch.shape, critic_hidden_states_batch.shape)
+
+                # actions_batch = padded_actions_trajectories[:, first_traj:last_traj]
+                # values_batch = padded_values_trajectories[:, first_traj:last_traj]
+                # advantages_batch = padded_advantages_trajectories[:, first_traj:last_traj]
+                # returns_batch = padded_returns_trajectories[:, first_traj:last_traj]
+                # old_actions_log_prob_batch = padded_old_actions_log_prob_trajectories[:, first_traj:last_traj]
+                # old_mu_batch = padded_old_mu_trajectories[:, first_traj:last_traj]
+                # old_sigma_batch = padded_old_sigma_trajectories[:, first_traj:last_traj]
+                # old_env_bins_batch = padded_old_env_bins_trajectories[:, first_traj:last_traj]
+
+
 
                 actions_batch = self.actions[:, start:stop]
                 old_mu_batch = self.mu[:, start:stop]
@@ -287,6 +324,6 @@ class RolloutStorage:
                 old_actions_log_prob_batch = self.actions_log_prob[:, start:stop]
 
                 yield obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, masks_batch, None, None
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, masks_batch, actor_hidden_states_batch, critic_hidden_states_batch
                 
                 first_traj = last_traj

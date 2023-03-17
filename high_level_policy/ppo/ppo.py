@@ -8,7 +8,7 @@ import numpy as np
 from params_proto import PrefixProto
 
 from high_level_policy.ppo import ActorCritic
-# from high_level_policy.ppo import ActorCriticRecurrent
+from high_level_policy.ppo import ActorCriticRecurrent
 from high_level_policy.ppo import RolloutStorage
 from high_level_policy.ppo import caches
 
@@ -35,7 +35,7 @@ class PPO_Args(PrefixProto):
 
 
 class PPO:
-    actor_critic: ActorCritic
+    actor_critic: ActorCriticRecurrent
 
     def __init__(self, actor_critic, forward_model=None, device='cpu'):
 
@@ -71,17 +71,20 @@ class PPO:
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, privileged_obs, obs_history, adaptation_hs, latent_teacher, full_seen_world, rollout=False, student=False):
+    def act(self, obs, privileged_obs, obs_history, full_seen_world, actor_hidden_states, critic_hidden_states, rollout=False, student=False):
         # Compute the actions and values
-        priv_latent, actions = self.actor_critic.act(obs, privileged_obs, rollout=rollout, student=student, observation_history=obs_history, adaptation_hs=adaptation_hs)
-        _, (latent, _), _ = priv_latent
+        # print(actor_hidden_states, critic_hidden_states)
+        priv_latent, actions = self.actor_critic.act(obs.unsqueeze(0), privileged_obs.unsqueeze(0), rollout=rollout, student=student, observation_history=obs_history, hidden_states=actor_hidden_states.unsqueeze(0))
+        (_, (next_actor_hidden_states, _)) = priv_latent
         self.transition.actions = actions.detach()
-        self.transition.values = self.actor_critic.evaluate(obs, privileged_obs, student=student, observation_history=obs_history).detach()
+        values, next_critic_hidden_states = self.actor_critic.evaluate(obs.unsqueeze(0), privileged_obs.unsqueeze(0), student=student, observation_history=obs_history, hidden_states=critic_hidden_states.unsqueeze(0))
+        self.transition.values = values.detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()
         self.transition.action_sigma = self.actor_critic.action_std.detach()
-        self.transition.adaptation_hidden_states = adaptation_hs.detach()
-        self.transition.latent_teacher_states = latent_teacher.detach()
+
+        self.transition.actor_hidden_states  = actor_hidden_states.detach().squeeze(0)
+        self.transition.critic_hidden_states = critic_hidden_states.detach().squeeze(0)
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = obs
@@ -89,7 +92,7 @@ class PPO:
         self.transition.full_seen_world = full_seen_world
         # print('adding to transition', obs_history[0, -60:])
         self.transition.observation_histories = obs_history
-        return priv_latent, self.transition.actions
+        return priv_latent, (next_actor_hidden_states.detach(), next_critic_hidden_states.detach()), self.transition.actions
 
     def process_env_step(self, rewards, dones, infos):
         self.transition.rewards = rewards.clone()
@@ -109,7 +112,9 @@ class PPO:
         self.actor_critic.reset(dones)
 
     def compute_returns(self, last_critic_obs, last_critic_privileged_obs, **kwargs):
-        last_values = self.actor_critic.evaluate(last_critic_obs, last_critic_privileged_obs, **kwargs).detach()
+        kwargs['hidden_states'] = kwargs['hidden_states'].unsqueeze(0)
+        last_values, _ = self.actor_critic.evaluate(last_critic_obs.unsqueeze(0), last_critic_privileged_obs.unsqueeze(0), **kwargs)
+        last_values = last_values.detach()
         self.storage.compute_returns(last_values, PPO_Args.gamma, PPO_Args.lam)
 
     def decoder_loss(self, gt, pred):
@@ -218,18 +223,24 @@ class PPO:
         mean_entropy_loss = 0
         mean_kl = 0
 
+        
         # generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         generator = self.storage.recurrent_mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, masks_batch, env_bins_batch in generator:
+            old_mu_batch, old_sigma_batch, masks_batch, actor_hidden_states_batch, critic_hidden_states_batch in generator:
 
             self.optimizer.zero_grad()
 
+            # print('before', actions_batch.shape, obs_batch.shape, privileged_obs_batch.shape, actor_hidden_states_batch.shape, critic_hidden_states_batch.shape, actor_hidden_states_batch[:1].shape, critic_hidden_states_batch[:1].shape)
 
-            ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student), _), _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch, adaptation_hs=adaptation_hidden_states_batch)
+            ((priv_train_pred_teacher, _), (_, latent_enc_student)), _ = self.actor_critic.act(obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch, hidden_states=actor_hidden_states_batch[:1])
             
+            # print('state shape', latent_enc_teacher.shape)
+            # actor_hidden_
+            # print(actions_batch.shape, obs_batch.shape)
+
             actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
-            value_batch = self.actor_critic.evaluate(critic_obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch)
+            value_batch, _ = self.actor_critic.evaluate(critic_obs_batch, privileged_obs_batch, student=student, observation_history=obs_history_batch, masks=masks_batch, hidden_states=critic_hidden_states_batch[:1])
             mu_batch = self.actor_critic.action_mean
             sigma_batch = self.actor_critic.action_std
             entropy_batch = self.actor_critic.entropy
@@ -322,49 +333,49 @@ class PPO:
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
 
-            if USE_LATENT:
-                if ENCODER and DECODER:
-                    mean_reconstruction_loss += reconstruction_loss.item()
-                    if student:
-                        mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
-                # if DECODER:
-                #     mean_reconstruction_loss += reconstruction_loss.item()
-                #     if student:
-                #         mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
-                if student:        
-                    mean_adaptation_module_loss += adaptation_loss.item()
+            # if USE_LATENT:
+            #     if ENCODER and DECODER:
+            #         mean_reconstruction_loss += reconstruction_loss.item()
+            #         if student:
+            #             mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+            #     # if DECODER:
+            #     #     mean_reconstruction_loss += reconstruction_loss.item()
+            #     #     if student:
+            #     #         mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+            #     if student:        
+            #         mean_adaptation_module_loss += adaptation_loss.item()
 
-                if not student and self.iters > SKIP_ADAPTATION_ITER and not EVAL_EXPERT:
-                    # Adaptation module gradient step
-                    for epoch in range(PPO_Args.num_adaptation_module_substeps):
-                        # with torch.enable_grad():
-                        # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-                        self.adaptation_module_optimizer.zero_grad()
+            #     if not student and self.iters > SKIP_ADAPTATION_ITER and not EVAL_EXPERT:
+            #         # Adaptation module gradient step
+            #         for epoch in range(PPO_Args.num_adaptation_module_substeps):
+            #             # with torch.enable_grad():
+            #             # adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+            #             self.adaptation_module_optimizer.zero_grad()
 
-                        adaptation_pred, _ = self.actor_critic.get_latent_student(obs_history_batch, hidden_states=adaptation_hidden_states_batch)
-                        if ENCODER:
-                            with torch.no_grad():
-                                adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
-                                if DECODER:
-                                    adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
-                                    adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
-                            adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
-                        else:
-                            adaptation_target = privileged_obs_batch
-                            adaptation_loss = self.decoder_loss(adaptation_target, adaptation_pred)
-                            # adaptation_reconstruction_loss = F.mse_loss(adaptation_pred, adaptation_target)
+            #             adaptation_pred, _ = self.actor_critic.get_latent_student(obs_history_batch, hidden_states=adaptation_hidden_states_batch)
+            #             if ENCODER:
+            #                 with torch.no_grad():
+            #                     adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
+            #                     if DECODER:
+            #                         adaptation_decoded = self.actor_critic.env_factor_decoder(adaptation_pred)
+            #                         adaptation_reconstruction_loss = self.decoder_loss(privileged_obs_batch, adaptation_decoded)
+            #                 adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+            #             else:
+            #                 adaptation_target = privileged_obs_batch
+            #                 adaptation_loss = self.decoder_loss(adaptation_target, adaptation_pred)
+            #                 # adaptation_reconstruction_loss = F.mse_loss(adaptation_pred, adaptation_target)
                                     
-                        total_adap_loss = adaptation_loss
+            #             total_adap_loss = adaptation_loss
                         
-                        # if DECODER:
-                        #     total_adap_loss += (adaptation_reconstruction_loss)
+            #             # if DECODER:
+            #             #     total_adap_loss += (adaptation_reconstruction_loss)
 
-                        total_adap_loss.backward()
-                        self.adaptation_module_optimizer.step()
+            #             total_adap_loss.backward()
+            #             self.adaptation_module_optimizer.step()
 
-                        mean_adaptation_module_loss += adaptation_loss.item()
-                        if ENCODER and DECODER:
-                            mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
+            #             mean_adaptation_module_loss += adaptation_loss.item()
+            #             if ENCODER and DECODER:
+            #                 mean_adaptation_reconstruction_loss += adaptation_reconstruction_loss.item()
                         
                 # else:
                 #     for epoch in range(PPO_Args.num_adaptation_module_substeps):

@@ -154,7 +154,7 @@ class reward_scales:
     # angular_vel = -0.005
     # backward_vel = -0.001
     # collision = -0.01
-    zero_velocity = -0.2
+    zero_velocity = -0.0
     # exploration = -0.01
     
     # side_limits = -1.0

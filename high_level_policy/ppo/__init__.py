@@ -12,10 +12,11 @@ import wandb
 import numpy as np
 
 from .actor_critic import ActorCritic
-# from .actor_critic_recurrent import ActorCriticRecurrent
+from .actor_critic_recurrent import ActorCriticRecurrent
 from .rollout_storage import RolloutStorage
 
 from high_level_policy import *
+from high_level_policy.utils import *
 from tqdm import tqdm
 
 from matplotlib import pyplot as plt
@@ -89,39 +90,27 @@ class Runner:
         self.device = device
         self.env = env
 
-        actor_critic = ActorCritic(self.env.num_obs,
-                                      self.env.num_privileged_obs,
-                                      self.env.num_obs_history,
-                                      self.env.num_actions,
-                                      ).to(self.device)
-        
-        # actor_critic = ActorCriticRecurrent(self.env.num_obs,
+        # actor_critic = ActorCritic(self.env.num_obs,
         #                               self.env.num_privileged_obs,
         #                               self.env.num_obs_history,
         #                               self.env.num_actions,
         #                               ).to(self.device)
-
         
+        actor_critic = ActorCriticRecurrent(self.env.num_obs,
+                                      self.env.num_privileged_obs,
+                                      self.env.num_obs_history,
+                                      self.env.num_actions,
+                                      ).to(self.device)
 
-        # forward_model = ForwardModel((self.env.num_obs-3) + (self.env.num_privileged_obs-6) + self.env.num_actions, (self.env.num_obs-3) + (self.env.num_privileged_obs-6))
-
-        # inverse_model = InverseModel((self.env.num_obs-3) + (self.env.num_privileged_obs-6) + self.env.num_actions, (self.env.num_obs-3) + (self.env.num_privileged_obs-6))
 
         if RunnerArgs.resume:
             print('loading model for init...')
             weights = logger.load_torch(RunnerArgs.checkpoint)
-            # print(weights.keys())
             actor_critic.load_state_dict(state_dict=weights)
-            # new_weights = {'.'.join(k.split('.')[1:]):v for k,v in weights.items() if k.startswith('critic')}
-            # # print(new_weights)
-            # actor_critic.critic_body.load_state_dict(state_dict=new_weights)
-            # actor_critic.to(env.device)
             print('successfully loaded model...')
-
 
         self.alg = PPO(actor_critic, forward_model=None, device=self.device)
         self.num_steps_per_env = RunnerArgs.num_steps_per_env
-
 
         if ENCODER:
             latent_size = LATENT_DIM_SIZE
@@ -159,12 +148,12 @@ class Runner:
             self.device)
 
         adaptation_hidden_states = torch.zeros(self.env.num_envs, HIDDEN_STATE_SIZE).to(self.device)
+        actor_hidden_states = torch.zeros(num_train_envs, 64).to(self.device)
+        critic_hidden_states = torch.zeros(num_train_envs, 64).to(self.device)
         latent_size = LATENT_DIM_SIZE if (USE_LATENT and ENCODER) else PER_RECT * RECTS 
         latent_teacher_state = torch.zeros(self.env.num_envs, latent_size).to(self.device)
         
         self.alg.actor_critic.train()
-
-        print(privileged_obs.shape)
 
         rewbuffer = deque(maxlen=200)
         lenbuffer = deque(maxlen=200)
@@ -192,7 +181,6 @@ class Runner:
         save_at_iter = RunnerArgs.start_save_plot
         save_at_iter_eval = RunnerArgs.start_save_plot
         for it in tqdm(range(self.current_learning_iteration, tot_iter)):
-            # print('full info prob: ', self.env.ll_env.world_asset.full_info_prob, self.env.ll_env.world_asset.full_info_bool.sum()/self.env.ll_env.world_asset.full_info_bool.shape[0])
             # self.env.ll_env.world_asset.variables['full_info'] = False # it < 100
             # if (it + 1)%5 == 0:
             #     self.env.ll_env.world_asset.decay_full_info_prob()
@@ -205,15 +193,13 @@ class Runner:
 
                     full_seen_world = self.env.full_seen_world
 
-                    pos_rob, rot_rob = obs[self.random_anim_env, :2], obs[self.random_anim_env, 2:6]
-                    angle_rob = torch.rad2deg(torch.atan2(2.0*(rot_rob[0]*rot_rob[1] + rot_rob[3]*rot_rob[2]), 1. - 2.*(rot_rob[1]*rot_rob[1] + rot_rob[2]*rot_rob[2])))
+                    pos_rob, angle_rob = obs[self.random_anim_env, :2], quat_to_yaw(obs[self.random_anim_env, 2:6])
 
-                    pos_rob_eval, rot_rob_eval = obs[self.random_eval_anim_env, :2], obs[self.random_eval_anim_env, 2:6]
-                    angle_rob_eval = torch.rad2deg(torch.atan2(2.0*(rot_rob_eval[0]*rot_rob_eval[1] + rot_rob_eval[3]*rot_rob_eval[2]), 1. - 2.*(rot_rob_eval[1]*rot_rob_eval[1] + rot_rob_eval[2]*rot_rob_eval[2])))
+                    pos_rob_eval, angle_rob_eval = obs[self.random_eval_anim_env, :2], quat_to_yaw(obs[self.random_eval_anim_env, 2:6])
 
                     
                     ### main policy calls
-                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student), next_hidden_states), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs], obs_history[:num_train_envs], adaptation_hidden_states[:num_train_envs, :], latent_teacher_state[:num_train_envs, :], full_seen_world[:num_train_envs, :], rollout=True, student=(it > complete_student))
+                    ((priv_train_pred_teacher, priv_train_pred_student), (latent_enc_teacher, latent_enc_student)), (next_actor_hidden_states, next_critic_hidden_states), actions_train = self.alg.act(obs[:num_train_envs], privileged_obs[:num_train_envs], obs_history[:num_train_envs], full_seen_world[:num_train_envs, :], actor_hidden_states, critic_hidden_states, rollout=True, student=(it > complete_student))
                     
                     priv_train_pred = priv_train_pred_teacher
                     latent_enc = latent_enc_teacher
@@ -226,7 +212,7 @@ class Runner:
                         (priv_obs_pred, latent_pred, next_hidden_states_eval), actions_eval = self.alg.actor_critic.act_student(obs[num_train_envs:], obs_history[num_train_envs:], adaptation_hidden_states[num_train_envs:, :])
 
                     
-                    if USE_LATENT and DECODER and CREATE_VIZ:
+                    if False and USE_LATENT and DECODER and CREATE_VIZ:
                         start = time.time()
                         if it >= 0:
 
@@ -301,14 +287,12 @@ class Runner:
                             patches_eval.append(patch_set_eval)
                         # print('patch_creation', time.time() - start)
 
-                    ######
-                    # 6 + 5 + 5 + 5 + 3 = 24
-                    fm_obs = torch.cat([obs[:num_train_envs, :-3], privileged_obs[:num_train_envs, int(PER_RECT*0 + 2):int(PER_RECT*0 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*1 + 2):int(PER_RECT*1 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*2 + 2):int(PER_RECT*2 + PER_RECT)], actions_train], dim=-1)
                                             
+                    # print(actions_train.shape, actions_eval.shape)
                     ret = self.env.step(torch.cat((actions_train, actions_eval), dim=0))
 
                     obs_dict, rewards, dones, infos = ret
-                    # print(dones[:5])
+
                     if dones[self.random_anim_env]:
                         save_video_anim = True
                     if dones[self.random_eval_anim_env]:
@@ -318,49 +302,21 @@ class Runner:
                             self.eval_dones_ctr = 0
 
 
-
-                    
-
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
-                    
-
 
                     obs, privileged_obs, obs_history, rewards, dones = obs.to(self.device), privileged_obs.to(
                         self.device), obs_history.to(self.device), rewards.to(self.device), dones.to(self.device)
                     
                     
-                    # print(obs_history.shape, latent_enc.shape, latent_pred.shape, obs_history[0, -20:])
-
-
-                    
-                
-                    # fm_obs_pred = self.alg.fm(fm_obs)
-                    # fm_obs_next = torch.cat([obs[:num_train_envs, :-3], privileged_obs[:num_train_envs, int(PER_RECT*0 + 2):int(PER_RECT*0 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*1 + 2):int(PER_RECT*1 + PER_RECT)], privileged_obs[:num_train_envs, int(PER_RECT*2 + 2):int(PER_RECT*2 + PER_RECT)]], dim=-1)
-
-                    # curiosity_reward_scale = 0.1
-                    # curiosity_reward = torch.linalg.norm(fm_obs_pred[:, 6:] - fm_obs_next[:, 6:]) * curiosity_reward_scale
-                    # # print('inference', curiosity_reward)
-                    # rewards[:num_train_envs] += curiosity_reward
-                    # infos['train/episode']['rew_curiosity'] = curiosity_reward * curiosity_reward_scale
-
-                    
                     self.alg.process_env_step(rewards[:num_train_envs], dones[:num_train_envs], infos)
-                    
-                    if next_hidden_states is not None:
-                        adaptation_hidden_states[:num_train_envs, :] = next_hidden_states
-                    if next_hidden_states_eval is not None:
-                        adaptation_hidden_states[num_train_envs:, :] = next_hidden_states_eval
 
-                    adaptation_hidden_states[dones, :] = 0.
+                    actor_hidden_states[:, :] = next_actor_hidden_states[:, :]
+                    critic_hidden_states[:, :] = next_critic_hidden_states[:, :]
 
-                    if False and USE_LATENT:
-                        if (it > TEACHER_FORCING):
-                            obs_history[:num_train_envs, -20:] = latent_enc_student[:]
-                        else:
-                            obs_history[:num_train_envs, -20:] = latent_enc_teacher[:]
-                        obs_history[num_train_envs:, -20:] = latent_pred[:]
-                        # print('internal', obs_history[0, -25:])
+                    actor_hidden_states[dones[:num_train_envs], :] = 0.
+                    critic_hidden_states[dones[:num_train_envs], :] = 0.
+
 
                     if 'train/episode' in infos:
                         # for k, v in infos['train/episode'].items():
@@ -413,7 +369,7 @@ class Runner:
                         cur_episode_length[new_ids_eval] = 0
 
                 # Learning step
-                self.alg.compute_returns(obs[:num_train_envs], privileged_obs[:num_train_envs], student=((it > complete_student)), observation_history=obs_history[:num_train_envs])
+                self.alg.compute_returns(obs[:num_train_envs], privileged_obs[:num_train_envs], hidden_states=critic_hidden_states, student=((it > complete_student)), observation_history=obs_history[:num_train_envs])
 
                 # if it % eval_freq == 0:
                 #     self.env.reset_evaluation_envs()
@@ -533,18 +489,18 @@ class Runner:
                     traced_script_body_module.save(body_path)
                     logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
 
-                    if USE_LATENT:
-                        adaptation_module_path = f'{path}/adaptation_module_latest.jit'
-                        adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
-                        if not LSTM_ADAPTATION:
-                            traced_script_adaptation_module = torch.jit.script(adaptation_module)
-                        else:
-                            x = torch.randn(1, ROLLOUT_HISTORY, 37, device='cpu')
-                            hidden = torch.zeros(1, 1, HIDDEN_STATE_SIZE,  device='cpu')
-                            traced_script_adaptation_module = torch.jit.trace(adaptation_module, (x, hidden))
+                    # if USE_LATENT:
+                    #     adaptation_module_path = f'{path}/adaptation_module_latest.jit'
+                    #     adaptation_module = copy.deepcopy(self.alg.actor_critic.adaptation_module).to('cpu')
+                    #     if not LSTM_ADAPTATION:
+                    #         traced_script_adaptation_module = torch.jit.script(adaptation_module)
+                    #     else:
+                    #         x = torch.randn(1, ROLLOUT_HISTORY, 37, device='cpu')
+                    #         hidden = torch.zeros(1, 1, HIDDEN_STATE_SIZE,  device='cpu')
+                    #         traced_script_adaptation_module = torch.jit.trace(adaptation_module, (x, hidden))
                         
-                        traced_script_adaptation_module.save(adaptation_module_path)
-                        logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
+                    #     traced_script_adaptation_module.save(adaptation_module_path)
+                    #     logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
 
             self.env.increment_training_ctr()
             self.current_learning_iteration += num_learning_iterations  
