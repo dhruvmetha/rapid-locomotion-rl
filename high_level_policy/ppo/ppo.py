@@ -45,9 +45,6 @@ class PPO:
         self.actor_critic = actor_critic
         self.actor_critic.to(device)
 
-        # self.fm = forward_model
-        # self.fm.to(device)
-
         params = list(self.actor_critic.parameters())
 
         self.storage = None  # initialized later
@@ -87,7 +84,6 @@ class PPO:
         self.transition.critic_observations = obs
         self.transition.privileged_observations = privileged_obs
         self.transition.full_seen_world = full_seen_world
-        # print('adding to transition', obs_history[0, -60:])
         self.transition.observation_histories = obs_history
         return priv_latent, self.transition.actions
 
@@ -218,8 +214,7 @@ class PPO:
         mean_entropy_loss = 0
         mean_kl = 0
 
-        # generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
-        generator = self.storage.recurrent_mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
+        generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, adaptation_hidden_states_batch, masks_batch, env_bins_batch in generator:
 

@@ -7,7 +7,7 @@ import time
 import random
 
 from high_level_policy import *
-from high_level_policy import task_inplay
+# from high_level_policy import task_inplay
 from mini_gym.envs.world.world_config import *
 
 np.random.seed(42)
@@ -273,7 +273,7 @@ class WorldAsset():
         return
 
     def _get_random_idx(self, env_id):
-        if ADAPTIVE_SAMPLE_ENVS and (env_id < self.num_train_envs):
+        if False and (env_id < self.num_train_envs):
             return torch.multinomial(self.world_sampling_dist, 1)
         else:
             assets_container = self.env_assets_map[env_id]

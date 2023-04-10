@@ -1,8 +1,6 @@
 import os
-import glob
 
 HLP_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-# print(HLP_ROOT_DIR)
 HLP_ENVS_DIR = os.path.join(HLP_ROOT_DIR, 'high_level_policy', 'envs')
 
 PURE_RL_MODEL = f"{HLP_ROOT_DIR}/high_level_policy/models/pure_rl_model"
@@ -16,104 +14,15 @@ GOAL_POSITION_TRAIN = [3.2, 0]
 GOAL_POSITION_VAL = [3.2, 0]
 TRAJ_IMAGE_FOLDER = f'traj_push_obs_images_{GOAL_THRESHOLD}_{STEP_SIZE}'
 ROLLOUT_HISTORY = 25
-OCCUPANCY_GRID = False
-STUDENT_ENCODING = 5000
-TEACHER_FORCING = 0
-ENCODER = False
-DECODER = True
 EVAL_RATIO = .99
 MAX_EPISODE_LENGTH = 15 # 15
-FULL_INFO = True
-EVAL_EXPERT = True
-ADAPTIVE_SAMPLE_ENVS = False
-LSTM_ADAPTATION = False
-SHARED = False
-HIDDEN_STATE_SIZE = 512
-SKIP_ADAPTATION_ITER = 0
 ONE_TOUCH_MAP = True
-LATENT_DIM_SIZE = 8
 PER_RECT = 7
 RECTS = 3
-CREATE_VIZ = True
-SAVE_ADAPTATION_DATA = False
-START_SAVE_ITER = 50
 WALLS = True
 RESUME_CHECKPOINT = False
 SAVE_ADAPTATION_DATA_FILE_NAME = '2obstacle_sim2real/trial_test'
 
-experiment_runs = ['pure_rl', 'full_info_decoder', 'teacher_decoder', 'student_decoder', 'teacher_no_decoder', 'student_no_decoder', 'student_decoder_0', 'student_decoder_lstm', 'full_info_no_decoder']
-exp = experiment_runs[int(os.environ.get('RUN_TYPE'))]
-wandb_mode = str(os.environ.get('WANDB_MODE', 'online'))
-# print(exp)
-if exp == 'full_info_decoder':
-    FULL_INFO = True
-    DECODER = True
-    USE_LATENT = True
-    EVAL_EXPERT = True
-elif exp == 'full_info_no_decoder':
-    FULL_INFO = True
-    DECODER = False
-    USE_LATENT = True
-    EVAL_EXPERT = True
-elif exp == 'teacher_decoder':
-    FULL_INFO = False
-    DECODER = True
-    USE_LATENT = True
-    EVAL_EXPERT = True
-    LSTM_ADAPTATION = False
-    # TEACHER_FORCING = 0
-elif exp == 'teacher_no_decoder':
-    FULL_INFO = False
-    DECODER = False
-    USE_LATENT = True
-    EVAL_EXPERT = True
-elif exp == 'pure_rl':
-    FULL_INFO = False
-    ENCODER = False
-    DECODER = False
-    USE_LATENT = False
-    EVAL_EXPERT = True
-    SAVE_ADAPTATION_DATA = True
-elif exp == 'student_decoder':
-    FULL_INFO = False
-    DECODER = True
-    USE_LATENT = True
-    EVAL_EXPERT = False
-    # STUDENT_ENCODING = 3000
-    # TEACHER_FORCING = 2000
-elif exp == 'student_no_decoder':
-    FULL_INFO = False
-    DECODER = False
-    USE_LATENT = True
-    EVAL_EXPERT = False
-elif exp == 'student_decoder_0':
-    FULL_INFO = False
-    DECODER = True
-    USE_LATENT = True
-    EVAL_EXPERT = False
-    # STUDENT_ENCODING = 0
-    # TEACHER_FORCING = 2000
-elif exp == 'student_decoder_lstm':
-    FULL_INFO = False
-    DECODER = True
-    USE_LATENT = True
-    EVAL_EXPERT = False
-    # STUDENT_ENCODING = 3000
-    # TEACHER_FORCING = 2000
-    LSTM_ADAPTATION = True
-
-wandb_config = {
-    "project":'legged_reconstruction', "group":'3 obstacle 3', "name":f'{exp}', "mode": f"{wandb_mode}", "notes": "actions clamped at [-1, 1]"
-}
-
-task_inplay = f'task_{exp}'
-
-# RECENT_MODEL = sorted(glob.glob(f"{HLP_ROOT_DIR}/high_level_policy/runs/{task_inplay}/*/*/*"), key=os.path.getmtime)[-1]
-# EVAL_MODEL_PATH = RECENT_MODEL
-
-# task_eval_inplay = ['task_1']
-
-# BLOCK
 
 class world_cfg:
     CUSTOM_BLOCK = True
